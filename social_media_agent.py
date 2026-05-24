@@ -171,6 +171,8 @@ def fetch_settings_supabase():
             rows = res.json()
             if rows:
                 return rows[0]
+        else:
+            print(f"⚠️ Supabase fetch settings failed with status {res.status_code}: {res.text}")
     except Exception as e:
         print(f"⚠️ Supabase fetch settings failed: {e}")
     return None
@@ -193,7 +195,11 @@ def save_settings_supabase(gemini_key=None, insta_user=None, insta_pass=None):
         headers = supabase_headers(key)
         headers["Prefer"] = "resolution=merge-duplicates"
         res = requests.post(req_url, json=payload, headers=headers, timeout=5)
-        return res.status_code in [200, 201]
+        if res.status_code in [200, 201]:
+            return True
+        else:
+            print(f"⚠️ Supabase save settings failed with status {res.status_code}: {res.text}")
+            return False
     except Exception as e:
         print(f"⚠️ Supabase save settings failed: {e}")
         return False
@@ -208,6 +214,8 @@ def load_history_supabase():
         if res.status_code == 200:
             posts = res.json()
             return {"posts": posts}
+        else:
+            print(f"⚠️ Supabase load history failed with status {res.status_code}: {res.text}")
     except Exception as e:
         print(f"⚠️ Supabase load history failed: {e}")
     return None
@@ -220,7 +228,9 @@ def save_history_supabase(history_posts):
         headers = supabase_headers(key)
         
         # Clear table before bulk write to keep it in sync
-        requests.delete(f"{url}/rest/v1/posts_history", headers=headers, timeout=5)
+        del_res = requests.delete(f"{url}/rest/v1/posts_history", headers=headers, timeout=5)
+        if del_res.status_code not in [200, 204]:
+            print(f"⚠️ Supabase clear history table failed with status {del_res.status_code}: {del_res.text}")
         
         payload = []
         for p in history_posts:
@@ -232,7 +242,11 @@ def save_history_supabase(history_posts):
             })
             
         res = requests.post(f"{url}/rest/v1/posts_history", json=payload, headers=headers, timeout=5)
-        return res.status_code in [200, 201]
+        if res.status_code in [200, 201]:
+            return True
+        else:
+            print(f"⚠️ Supabase save history failed with status {res.status_code}: {res.text}")
+            return False
     except Exception as e:
         print(f"⚠️ Supabase save history failed: {e}")
         return False
@@ -246,6 +260,8 @@ def load_calendar_supabase():
         res = requests.get(req_url, headers=supabase_headers(key), timeout=5)
         if res.status_code == 200:
             return res.json()
+        else:
+            print(f"⚠️ Supabase load calendar failed with status {res.status_code}: {res.text}")
     except Exception as e:
         print(f"⚠️ Supabase load calendar failed: {e}")
     return None
@@ -258,7 +274,9 @@ def save_calendar_supabase(scheduled_posts):
         headers = supabase_headers(key)
         
         # Clear old table before saving the new active calendar
-        requests.delete(f"{url}/rest/v1/current_calendar", headers=headers, timeout=5)
+        del_res = requests.delete(f"{url}/rest/v1/current_calendar", headers=headers, timeout=5)
+        if del_res.status_code not in [200, 204]:
+            print(f"⚠️ Supabase clear calendar table failed with status {del_res.status_code}: {del_res.text}")
         
         payload = []
         for p in scheduled_posts:
@@ -278,7 +296,11 @@ def save_calendar_supabase(scheduled_posts):
             })
             
         res = requests.post(f"{url}/rest/v1/current_calendar", json=payload, headers=headers, timeout=5)
-        return res.status_code in [200, 201]
+        if res.status_code in [200, 201]:
+            return True
+        else:
+            print(f"⚠️ Supabase save calendar failed with status {res.status_code}: {res.text}")
+            return False
     except Exception as e:
         print(f"⚠️ Supabase save calendar failed: {e}")
         return False
