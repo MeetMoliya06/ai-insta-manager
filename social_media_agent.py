@@ -274,7 +274,7 @@ def save_calendar_supabase(scheduled_posts):
         headers = supabase_headers(key)
         
         # Clear old table before saving the new active calendar
-        del_res = requests.delete(f"{url}/rest/v1/current_calendar?id=gt.0", headers=headers, timeout=5)
+        del_res = requests.delete(f"{url}/rest/v1/current_calendar?post_number=not.is.null", headers=headers, timeout=5)
         if del_res.status_code not in [200, 204]:
             print(f"⚠️ Supabase clear calendar table failed with status {del_res.status_code}: {del_res.text}")
         
