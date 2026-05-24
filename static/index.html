@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Gen Studios — AI Social Media Manager</title>
+    <!-- Google Fonts: Outfit & Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- CSS Stylesheet -->
+    <link rel="stylesheet" href="style.css?v=1.0.3">
+</head>
+<body>
+    <!-- Background glowing orbs for premium visual layout -->
+    <div class="glow-orb orb-purple"></div>
+    <div class="glow-orb orb-teal"></div>
+    <div class="glow-orb orb-amber"></div>
+
+    <div class="app-container">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="header-logo-container">
+                <div class="logo-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                <div class="logo-text">
+                    <h1>NEW GEN STUDIOS</h1>
+                    <span class="logo-sub">AI Social Media Manager</span>
+                </div>
+            </div>
+
+            <div class="header-status-bar">
+                <div class="status-badge brand-handle" id="brand-handle-badge">
+                    <i class="fa-brands fa-instagram"></i> <span id="brand-handle-text">@newgenstudios.ai</span>
+                </div>
+                <div class="status-metric" id="metric-followers">
+                    <span class="metric-value">-</span>
+                    <span class="metric-label"><i class="fa-solid fa-users"></i> Followers</span>
+                </div>
+                <div class="status-metric" id="metric-following">
+                    <span class="metric-value">-</span>
+                    <span class="metric-label"><i class="fa-solid fa-user-plus"></i> Following</span>
+                </div>
+                <div class="status-metric" id="metric-views">
+                    <span class="metric-value">-</span>
+                    <span class="metric-label"><i class="fa-solid fa-chart-line"></i> Profile Views</span>
+                </div>
+                <div class="status-metric" id="metric-history">
+                    <span class="metric-value">-</span>
+                    <span class="metric-label">Past Posts</span>
+                </div>
+                <div class="status-metric" id="metric-scheduled">
+                    <span class="metric-value">-</span>
+                    <span class="metric-label">Scheduled Posts</span>
+                </div>
+                <button class="icon-btn" id="open-settings-btn" title="API Settings">
+                    <i class="fa-solid fa-sliders"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- MAIN LAYOUT -->
+        <main class="dashboard-grid">
+            
+            <!-- LEFT COLUMN: GENERATOR & TIMELINE -->
+            <section class="left-column">
+                
+                <!-- GENERATOR CONTROL BOARD -->
+                <div class="card glass-card control-board">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-gears"></i> Strategy Planner</h2>
+                        <span class="header-action" id="pillars-toggle">
+                            Pillars <i class="fa-solid fa-chevron-down"></i>
+                        </span>
+                    </div>
+
+                    <div class="planner-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="plan-weeks">Weeks to Plan</label>
+                                <select id="plan-weeks">
+                                    <option value="1">1 Week</option>
+                                    <option value="2" selected>2 Weeks</option>
+                                    <option value="4">4 Weeks</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="posts-per-week">Posts / Week</label>
+                                <select id="posts-per-week">
+                                    <option value="3">3 Posts</option>
+                                    <option value="4" selected>4 Posts</option>
+                                    <option value="5">5 Posts</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="generator-model">Gemini Model</label>
+                                <select id="generator-model">
+                                    <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (Fast)</option>
+                                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (Creative)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Content Pillars Collapse -->
+                        <div class="pillars-collapse" id="pillars-container">
+                            <label class="section-label">Active Content Pillars</label>
+                            <div class="pillars-grid" id="pillars-checklist">
+                                <!-- Loaded dynamically via JS -->
+                            </div>
+                        </div>
+
+                        <div class="action-row">
+                            <button class="btn btn-primary" id="generate-btn">
+                                <span class="btn-text"><i class="fa-solid fa-sparkles"></i> Generate AI Calendar</span>
+                                <span class="spinner hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                            </button>
+                            
+                            <button class="btn btn-secondary hidden" id="save-btn" title="Save changes made in active studio">
+                                <i class="fa-solid fa-floppy-disk"></i> Save
+                            </button>
+                            
+                            <button class="btn btn-export hidden" id="export-btn" title="Commit to history and export styled Excel">
+                                <i class="fa-solid fa-file-excel"></i> Commit & Export Excel
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Progress Loading Overlay -->
+                    <div class="loading-overlay hidden" id="gen-loader">
+                        <div class="loader-content">
+                            <div class="spinner-large"><i class="fa-solid fa-wand-magic-sparkles fa-spin"></i></div>
+                            <h3>Crafting Social Strategy...</h3>
+                            <p>Gemini is analysing past post history to ensure fresh, non-repetitive pillars and hooks.</p>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill" id="progress-bar"></div>
+                            </div>
+                            <span class="loader-status" id="loader-status-text">Thinking...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TIMELINE VIEW -->
+                <div class="timeline-container">
+                    <div class="timeline-header">
+                        <h3><i class="fa-solid fa-calendar-days"></i> Content Calendar Timeline</h3>
+                        <span class="timeline-count" id="active-calendar-badge">No active calendar loaded</span>
+                    </div>
+
+                    <div class="calendar-list" id="calendar-timeline-list">
+                        <!-- Placeholder/Empty State -->
+                        <div class="empty-state" id="calendar-empty-state">
+                            <div class="empty-icon"><i class="fa-solid fa-calendar-plus"></i></div>
+                            <h4>No Active Calendar Loaded</h4>
+                            <p>Generate a new AI strategy above or check settings to begin.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- RIGHT COLUMN: POST STUDIO EDITOR -->
+            <section class="right-column">
+                <div class="card glass-card studio-card" id="studio-panel">
+                    
+                    <!-- Studio Empty State -->
+                    <div class="empty-state studio-empty" id="studio-empty-state">
+                        <div class="empty-icon"><i class="fa-solid fa-clapperboard"></i></div>
+                        <h4>Social Media Editor Studio</h4>
+                        <p>Select any scheduled post card from the timeline to review details, copy prompts, edit captions, and copy hashtags.</p>
+                    </div>
+
+                    <!-- Studio Active Editor Content -->
+                    <div class="studio-content hidden" id="studio-editor-content">
+                        
+                        <!-- Post Meta Header -->
+                        <div class="studio-meta-header">
+                            <div class="meta-main">
+                                <span class="post-badge-number" id="studio-post-number">#1</span>
+                                <div>
+                                    <h3 id="studio-post-type">Before/After transformation</h3>
+                                    <p class="meta-date-time"><i class="fa-regular fa-clock"></i> <span id="studio-datetime">Tuesday, 11:00 AM IST</span></p>
+                                </div>
+                            </div>
+                            <span class="format-badge" id="studio-format-badge"><i class="fa-solid fa-video"></i> Reel</span>
+                        </div>
+
+                        <!-- Hook Card -->
+                        <div class="studio-section hook-section">
+                            <div class="section-header">
+                                <label><i class="fa-solid fa-quote-left"></i> Scroll-Stopper Hook</label>
+                                <button class="btn-copy-mini" id="copy-hook-btn" title="Copy Hook"><i class="fa-regular fa-copy"></i> Copy</button>
+                            </div>
+                            <input type="text" class="input-hook" id="studio-hook-input" placeholder="Enter scroll stopper hook...">
+                        </div>
+
+                        <!-- Caption & CTA -->
+                        <div class="studio-section caption-section">
+                            <div class="section-header">
+                                <label><i class="fa-solid fa-align-left"></i> Instagram Caption & Call-to-Action</label>
+                                <div class="caption-actions">
+                                    <button class="btn-copy-mini" id="copy-caption-btn" title="Copy Caption"><i class="fa-regular fa-copy"></i> Copy Caption</button>
+                                </div>
+                            </div>
+                            <textarea class="textarea-caption" id="studio-caption-input" rows="8" placeholder="Instagram caption goes here..."></textarea>
+                        </div>
+
+                        <!-- Visual Studio: AI Prompt Generator -->
+                        <div class="studio-section prompt-section">
+                            <div class="section-header">
+                                <label><i class="fa-solid fa-image"></i> AI Image / Video Prompt</label>
+                                <div class="prompt-tools">
+                                    <span class="tool-recommendation" id="studio-tool-recommendation">Midjourney</span>
+                                    <button class="btn-copy-mini" id="copy-prompt-btn" title="Copy AI Prompt"><i class="fa-regular fa-copy"></i> Copy Prompt</button>
+                                </div>
+                            </div>
+                            <textarea class="textarea-prompt" id="studio-prompt-input" rows="3" placeholder="AI Image/Video generation prompt..."></textarea>
+                            <div class="prompt-quick-links">
+                                <span class="quick-link-label">Quick open tools:</span>
+                                <a href="https://discord.com" target="_blank" class="quick-link-btn" id="mj-link"><i class="fa-brands fa-discord"></i> Midjourney</a>
+                                <a href="https://runwayml.com" target="_blank" class="quick-link-btn" id="runway-link"><i class="fa-solid fa-bolt"></i> RunwayML</a>
+                                <a href="https://klingai.com" target="_blank" class="quick-link-btn" id="kling-link"><i class="fa-solid fa-wand-magic"></i> Kling</a>
+                            </div>
+                        </div>
+
+                        <!-- Hashtags -->
+                        <div class="studio-section hashtags-section">
+                            <div class="section-header">
+                                <label><i class="fa-solid fa-hashtag"></i> Curated Hashtags (25)</label>
+                                <button class="btn-copy-mini" id="copy-hashtags-btn" title="Copy Hashtags"><i class="fa-regular fa-copy"></i> Copy Hashtags</button>
+                            </div>
+                            <textarea class="textarea-hashtags" id="studio-hashtags-input" rows="2" placeholder="#hashtags..."></textarea>
+                        </div>
+
+                        <!-- Creator Notes -->
+                        <div class="studio-section notes-section">
+                            <div class="section-header">
+                                <label><i class="fa-solid fa-lightbulb"></i> Creator Production Notes</label>
+                            </div>
+                            <textarea class="textarea-notes" id="studio-notes-input" rows="2" placeholder="Creator notes..."></textarea>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- BOTTOM DRAWER: POSTS HISTORY ARCHIVE -->
+        <footer class="app-footer">
+            <div class="card glass-card history-card">
+                <div class="card-header history-header" id="history-header-btn">
+                    <div class="header-left">
+                        <h3><i class="fa-solid fa-database"></i> Past Content History Archive</h3>
+                        <p class="subtitle" id="history-subtitle">Tracked to ensure 100% unique topics every generation cycle.</p>
+                    </div>
+                    <div class="header-right">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="history-search" placeholder="Search past posts...">
+                        </div>
+                        <button class="icon-btn-toggle" id="history-toggle-btn">
+                            <i class="fa-solid fa-chevron-up"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="history-content-area" id="history-content-area">
+                    <div class="table-container">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Format</th>
+                                    <th>Content Pillar</th>
+                                    <th>Idea / Summary concept</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body">
+                                <tr>
+                                    <td colspan="4" class="table-loading">Loading post history...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- SETTINGS FLOATING MODAL -->
+    <div class="modal-backdrop hidden" id="settings-modal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-sliders"></i> System Settings</h3>
+                <button class="icon-close" id="close-settings-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- GEMINI API SECTION -->
+                <div class="form-group">
+                    <label for="settings-api-key">Google Gemini API Key</label>
+                    <div class="api-key-input-container">
+                        <input type="password" id="settings-api-key" placeholder="AIzaSy...">
+                        <button class="icon-btn-show" id="toggle-key-visibility" title="Show/Hide Key">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
+                    </div>
+                    <p class="field-hint">Your API Key is saved directly in the project's secure local <code>.env</code> file.</p>
+                </div>
+
+                <div class="settings-status-box" id="key-status-box">
+                    <div class="status-indicator" id="key-status-indicator"></div>
+                    <span class="status-message" id="key-status-text">Checking API key status...</span>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 0.5rem 0;">
+
+                <!-- INSTAGRAM CONNECTION STATUS -->
+                <div class="form-group">
+                    <label style="color: #cfcde6; display: flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-brands fa-instagram" style="color: var(--purple);"></i> Instagram Connection Status
+                    </label>
+                    <p class="field-hint" style="margin-bottom: 0.5rem;">Configure credentials in your local <code>.env</code> file to sync automatically.</p>
+                </div>
+                <div class="settings-status-box" id="insta-status-box">
+                    <div class="status-indicator" id="insta-status-indicator"></div>
+                    <span class="status-message" id="insta-status-text">Checking Instagram status...</span>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 0.5rem 0;">
+
+                <!-- SUPABASE CLOUD SYNC STATUS -->
+                <div class="form-group">
+                    <label style="color: #cfcde6; display: flex; align-items: center; gap: 0.35rem;">
+                        <i class="fa-solid fa-cloud" style="color: var(--teal);"></i> Supabase Database Sync Status
+                    </label>
+                    <p class="field-hint" style="margin-bottom: 0.5rem;">Configure Project URL & Anon Key in your <code>.env</code> file to enable cloud database backups.</p>
+                </div>
+                <div class="settings-status-box" id="supabase-status-box">
+                    <div class="status-indicator" id="supabase-status-indicator"></div>
+                    <span class="status-message" id="supabase-status-text">Checking Supabase status...</span>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-settings-btn">Cancel</button>
+                <button class="btn btn-primary" id="save-settings-btn">Save Key Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div class="toast-notification hidden" id="toast-notif">
+        <i class="fa-solid fa-check-circle"></i>
+        <span class="toast-message" id="toast-text">Action successful!</span>
+    </div>
+
+    <!-- Client-side Orchestrator Script -->
+    <script src="app.js?v=1.0.3"></script>
+</body>
+</html>

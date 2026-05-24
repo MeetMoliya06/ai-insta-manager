@@ -1,0 +1,23 @@
+# 🐍 Python environment & virtualenv
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 🔑 Credentials & Sensitive Sessions
+.env
+instagram_session.json
+
+# 📊 Local databases & backup assets
+current_calendar.json
+posts_history.json
+*.xlsx
+
+# 🖥️ OS files
+.DS_Store
+Thumbs.db
