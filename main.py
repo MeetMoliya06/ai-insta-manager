@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime, timedelta
 from typing import List, Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Body, Request
@@ -87,6 +88,7 @@ class GenerateRequest(BaseModel):
     posts_per_week: int = 4
     pillars: List[str] = []
     model_name: str = "gemini-2.5-flash"
+    append_to_existing: bool = True
 
 class PostItem(BaseModel):
     post_number: int
@@ -354,13 +356,41 @@ def generate_calendar(req: GenerateRequest):
         )
         
         # 3. Apply schedule
-        # Temp override BEST_TIMES or POSTS_PER_WEEK if needed, but build_schedule works out-of-the-box
-        scheduled_posts = agent.build_schedule(raw_posts)
+        start_date = None
+        start_post_number = 1
+        existing_calendar = []
+        
+        if req.append_to_existing:
+            existing_calendar = load_current_calendar()
+            if existing_calendar:
+                # Find the highest post number to increment
+                highest_num = max(p.get("post_number", 0) for p in existing_calendar)
+                start_post_number = highest_num + 1
+                
+                # Find the latest post date in existing calendar
+                latest_date = None
+                for p in existing_calendar:
+                    if p.get("date"):
+                        try:
+                            d = datetime.strptime(p["date"], "%d %b %Y")
+                            if latest_date is None or d > latest_date:
+                                latest_date = d
+                        except Exception:
+                            pass
+                if latest_date:
+                    start_date = latest_date + timedelta(days=1)
+
+        scheduled_posts = agent.build_schedule(
+            raw_posts, 
+            start_date=start_date, 
+            start_post_number=start_post_number
+        )
         
         # 4. Save to temporary current calendar (so user can edit in dashboard before exporting/committing)
-        save_current_calendar(scheduled_posts)
+        full_calendar = existing_calendar + scheduled_posts
+        save_current_calendar(full_calendar)
         
-        return scheduled_posts
+        return full_calendar
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
