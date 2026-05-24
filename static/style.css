@@ -1296,3 +1296,59 @@ body {
 .toast-notification.error i {
     color: var(--red);
 }
+
+/* ────────────────────────────────────────────────────────
+   ✅ MARK DONE / UPLOADED POST STYLES
+   ──────────────────────────────────────────────────────── */
+
+.btn-status-toggle {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.35rem 0.65rem;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: var(--transition-smooth);
+}
+
+.btn-status-toggle:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+}
+
+.btn-status-toggle.done {
+    background: rgba(60, 219, 164, 0.1);
+    border-color: rgba(60, 219, 164, 0.4);
+    color: #3cdba4;
+    box-shadow: 0 0 10px rgba(60, 219, 164, 0.15);
+}
+
+.timeline-card.uploaded {
+    opacity: 0.65;
+    border-color: rgba(60, 219, 164, 0.2);
+}
+
+.timeline-card.uploaded h4 {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+.timeline-card.uploaded .hook-preview {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.uploaded-check-icon {
+    color: var(--teal);
+    font-size: 0.85rem;
+    margin-left: auto;
+    filter: drop-shadow(0 0 4px var(--teal));
+}
+

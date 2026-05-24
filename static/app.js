@@ -75,6 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
         studioHashtagsInput: document.getElementById("studio-hashtags-input"),
         studioNotesInput: document.getElementById("studio-notes-input"),
         studioToolRec: document.getElementById("studio-tool-recommendation"),
+        studioDoneBtn: document.getElementById("studio-done-btn"),
         
         copyHookBtn: document.getElementById("copy-hook-btn"),
         copyCaptionBtn: document.getElementById("copy-caption-btn"),
@@ -317,9 +318,11 @@ document.addEventListener("DOMContentLoaded", () => {
             } catch (e) {}
 
             const activeClass = state.activePostIndex === index ? "active" : "";
+            const uploadedClass = post.is_done ? "uploaded" : "";
+            const checkIcon = post.is_done ? '<i class="fa-solid fa-circle-check uploaded-check-icon" title="Uploaded"></i>' : '';
 
             const card = document.createElement("div");
-            card.className = `timeline-card ${pillarClass} ${activeClass}`;
+            card.className = `timeline-card ${pillarClass} ${activeClass} ${uploadedClass}`;
             card.dataset.index = index;
             card.innerHTML = `
                 <div class="card-date-badge">
@@ -330,6 +333,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div class="card-meta-line">
                         <span class="time"><i class="fa-regular fa-clock"></i> ${post.day} ${post.time.split(" ")[0]}</span>
                         <span class="format-tag">${post.reel_or_static}</span>
+                        ${checkIcon}
                     </div>
                     <h4>${post.post_type}</h4>
                     <span class="hook-preview">"${post.hook}"</span>
@@ -397,6 +401,15 @@ document.addEventListener("DOMContentLoaded", () => {
         elements.studioPromptInput.value = post.image_prompt;
         elements.studioHashtagsInput.value = post.hashtags;
         elements.studioNotesInput.value = post.notes_for_creator;
+
+        // Toggle Done Button Style
+        if (post.is_done) {
+            elements.studioDoneBtn.classList.add("done");
+            elements.studioDoneBtn.innerHTML = '<i class="fa-solid fa-circle-check"></i> <span>Uploaded</span>';
+        } else {
+            elements.studioDoneBtn.classList.remove("done");
+            elements.studioDoneBtn.innerHTML = '<i class="fa-regular fa-circle-check"></i> <span>Mark Done</span>';
+        }
 
         // Tool Recommendations & Links
         if (isReel) {
@@ -732,6 +745,25 @@ document.addEventListener("DOMContentLoaded", () => {
         elements.copyCaptionBtn.addEventListener("click", () => copyTextToClipboard(elements.studioCaptionInput.value, "Caption"));
         elements.copyPromptBtn.addEventListener("click", () => copyTextToClipboard(elements.studioPromptInput.value, "AI prompt"));
         elements.copyHashtagsBtn.addEventListener("click", () => copyTextToClipboard(elements.studioHashtagsInput.value, "Hashtags"));
+
+        // Mark Done Status Action
+        elements.studioDoneBtn.addEventListener("click", () => {
+            if (state.activePostIndex === null) return;
+            const index = state.activePostIndex;
+            const post = state.calendar[index];
+            
+            // Toggle status
+            post.is_done = !post.is_done;
+            
+            // Update Save button styling to show there are unsaved changes
+            state.hasUnsavedChanges = true;
+            elements.saveBtn.classList.remove("btn-secondary");
+            elements.saveBtn.classList.add("btn-primary");
+            
+            // Refresh UI
+            selectPost(index);
+            renderCalendarTimeline();
+        });
 
         // Global Action Buttons
         elements.generateBtn.addEventListener("click", triggerGeneration);

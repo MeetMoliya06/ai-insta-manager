@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS public.current_calendar (
     image_prompt text,
     cta text,
     notes_for_creator text,
+    is_done boolean DEFAULT false,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -60,3 +61,8 @@ CREATE TABLE IF NOT EXISTS public.current_calendar (
 ALTER TABLE public.current_calendar ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all access to anon" ON public.current_calendar;
 CREATE POLICY "Allow all access to anon" ON public.current_calendar FOR ALL TO anon USING (true) WITH CHECK (true);
+
+-- ────────────────────────────────────────────────────────
+-- MIGRATION: Run this single line if you already created the tables previously:
+-- ALTER TABLE public.current_calendar ADD COLUMN IF NOT EXISTS is_done boolean DEFAULT false;
+-- ────────────────────────────────────────────────────────

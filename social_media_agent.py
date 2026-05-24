@@ -292,7 +292,8 @@ def save_calendar_supabase(scheduled_posts):
                 "hashtags": p.get("hashtags"),
                 "image_prompt": p.get("image_prompt"),
                 "cta": p.get("cta"),
-                "notes_for_creator": p.get("notes_for_creator")
+                "notes_for_creator": p.get("notes_for_creator"),
+                "is_done": p.get("is_done", False)
             })
             
         res = requests.post(f"{url}/rest/v1/current_calendar", json=payload, headers=headers, timeout=5)
@@ -459,7 +460,11 @@ def create_excel(scheduled_posts):
         row = i + 4
         bg = WHITE if i % 2 == 0 else GRAY_LT
 
-        cell_style(ws, row, 1,  post["post_number"],      bg=bg, align="center")
+        is_done = post.get("is_done", False)
+        num_display = f"✓ {post['post_number']}" if is_done else post["post_number"]
+        num_bg = TEAL_LT if is_done else bg
+
+        cell_style(ws, row, 1,  num_display,              bg=num_bg, align="center")
         cell_style(ws, row, 2,  post["date"],              bg=bg, align="center")
         cell_style(ws, row, 3,  f"{post['day']}\n{post['time']}", bg=bg, wrap=True)
         cell_style(ws, row, 4,  post["post_type"],         bg=AMBER_LT, fg=AMBER, wrap=True)

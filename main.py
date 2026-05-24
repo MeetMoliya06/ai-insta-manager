@@ -101,6 +101,7 @@ class PostItem(BaseModel):
     image_prompt: str
     cta: str
     notes_for_creator: str
+    is_done: bool = False
 
 class SaveRequest(BaseModel):
     posts: List[PostItem]
