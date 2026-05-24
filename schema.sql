@@ -12,8 +12,10 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Disable Row Level Security (RLS) for simple local development reads/writes
-ALTER TABLE public.system_settings DISABLE ROW LEVEL SECURITY;
+-- Enable RLS and create policy for full public REST API (anon) access
+ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to anon" ON public.system_settings;
+CREATE POLICY "Allow all access to anon" ON public.system_settings FOR ALL TO anon USING (true) WITH CHECK (true);
 
 
 -- ────────────────────────────────────────────────────────
@@ -28,7 +30,10 @@ CREATE TABLE IF NOT EXISTS public.posts_history (
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
-ALTER TABLE public.posts_history DISABLE ROW LEVEL SECURITY;
+-- Enable RLS and create policy for full public REST API (anon) access
+ALTER TABLE public.posts_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to anon" ON public.posts_history;
+CREATE POLICY "Allow all access to anon" ON public.posts_history FOR ALL TO anon USING (true) WITH CHECK (true);
 
 
 -- ────────────────────────────────────────────────────────
@@ -51,4 +56,7 @@ CREATE TABLE IF NOT EXISTS public.current_calendar (
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
-ALTER TABLE public.current_calendar DISABLE ROW LEVEL SECURITY;
+-- Enable RLS and create policy for full public REST API (anon) access
+ALTER TABLE public.current_calendar ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all access to anon" ON public.current_calendar;
+CREATE POLICY "Allow all access to anon" ON public.current_calendar FOR ALL TO anon USING (true) WITH CHECK (true);
