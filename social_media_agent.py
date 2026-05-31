@@ -59,6 +59,59 @@ def save_history(history):
 SESSION_FILE = "instagram_session.json"
 
 def get_instagram_client(username, password):
+    # Safely patch instagrapi extractors BEFORE importing Client and update sys.modules for existing imports
+    try:
+        import sys
+        import instagrapi.extractors
+        
+        if not hasattr(instagrapi.extractors, "_patched_by_newgen"):
+            _orig_extract_media_v1 = instagrapi.extractors.extract_media_v1
+            _orig_extract_resource_v1 = instagrapi.extractors.extract_resource_v1
+            _orig_extract_direct_media = instagrapi.extractors.extract_direct_media
+            _orig_extract_story_v1 = instagrapi.extractors.extract_story_v1
+
+            def clean_media_dict(data):
+                if not isinstance(data, dict):
+                    return data
+                data = dict(data)
+                # If video_versions is present but falsy/None, remove it to avoid TypeError/IndexError
+                if "video_versions" in data and not data["video_versions"]:
+                    data.pop("video_versions", None)
+                # If image_versions2 is present but invalid/None, remove it to avoid error
+                if "image_versions2" in data:
+                    val = data["image_versions2"]
+                    if not val or not isinstance(val, dict) or not val.get("candidates"):
+                        data.pop("image_versions2", None)
+                return data
+
+            patched_extract_media_v1 = lambda data: _orig_extract_media_v1(clean_media_dict(data))
+            patched_extract_resource_v1 = lambda data: _orig_extract_resource_v1(clean_media_dict(data))
+            patched_extract_direct_media = lambda data: _orig_extract_direct_media(clean_media_dict(data))
+            patched_extract_story_v1 = lambda data: _orig_extract_story_v1(clean_media_dict(data))
+
+            # 1. Patch the extractors module attributes
+            instagrapi.extractors.extract_media_v1 = patched_extract_media_v1
+            instagrapi.extractors.extract_resource_v1 = patched_extract_resource_v1
+            instagrapi.extractors.extract_direct_media = patched_extract_direct_media
+            instagrapi.extractors.extract_story_v1 = patched_extract_story_v1
+            instagrapi.extractors._patched_by_newgen = True
+            
+            # 2. Patch any other modules that might have already imported them directly
+            for mod_name, mod in list(sys.modules.items()):
+                if mod_name.startswith("instagrapi"):
+                    if hasattr(mod, "extract_media_v1"):
+                        mod.extract_media_v1 = patched_extract_media_v1
+                    if hasattr(mod, "extract_resource_v1"):
+                        mod.extract_resource_v1 = patched_extract_resource_v1
+                    if hasattr(mod, "extract_direct_media"):
+                        mod.extract_direct_media = patched_extract_direct_media
+                    if hasattr(mod, "extract_story_v1"):
+                        mod.extract_story_v1 = patched_extract_story_v1
+                        
+            print("🩹 Successfully patched instagrapi media extractors across all modules to prevent NoneType errors.")
+    except Exception as patch_err:
+        print(f"⚠️ Failed to patch instagrapi extractors: {patch_err}")
+
     from instagrapi import Client
     cl = Client()
     # Fast delays to keep it snappy

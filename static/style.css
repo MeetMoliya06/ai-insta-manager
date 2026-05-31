@@ -1352,3 +1352,36 @@ body {
     filter: drop-shadow(0 0 4px var(--teal));
 }
 
+/* Timeline Divider and Completed Posts Container */
+.timeline-divider {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 1.5rem 0 0.5rem 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.75px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+    user-select: none;
+    transition: var(--transition-smooth);
+}
+
+.timeline-divider:hover {
+    color: var(--text-primary);
+}
+
+.timeline-divider span {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.completed-posts-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+

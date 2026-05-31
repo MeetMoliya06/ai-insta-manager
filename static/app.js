@@ -8,7 +8,8 @@ document.addEventListener("DOMContentLoaded", () => {
         history: { posts: [] },
         calendar: [], // The current active scheduled posts
         activePostIndex: null, // The index of the post currently open in the studio
-        hasUnsavedChanges: false
+        hasUnsavedChanges: false,
+        instagramProfile: null
     };
 
     // DOM ELEMENTS
@@ -114,6 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function loadInstagramProfile() {
         if (!state.config.has_instagram) {
+            state.instagramProfile = { status: "offline" };
             updateInstagramUI({ status: "offline", message: "Instagram connection not configured." });
             return;
         }
@@ -125,9 +127,11 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!res.ok) throw new Error("Server communication error");
             const result = await res.json();
             
+            state.instagramProfile = result;
             updateInstagramUI(result);
         } catch (err) {
             console.error(err);
+            state.instagramProfile = { status: "error", message: err.message };
             updateInstagramUI({ status: "error", message: "Failed to connect: " + err.message });
         }
     }
@@ -147,8 +151,7 @@ document.addEventListener("DOMContentLoaded", () => {
             following.textContent = formatCompactNumber(data.following);
             views.textContent = data.views;
             
-            // Dynamically show actual live posts count in header
-            elements.historyValue.textContent = data.posts_count;
+            updateHistoryCountUI();
             
             elements.instaStatusIndicator.className = "status-indicator success";
             elements.instaStatusText.textContent = `Connected as @${data.username}`;
@@ -159,8 +162,7 @@ document.addEventListener("DOMContentLoaded", () => {
             following.textContent = "-";
             views.textContent = "-";
             
-            // Restore local history post count
-            elements.historyValue.textContent = state.history.posts ? state.history.posts.length : "0";
+            updateHistoryCountUI();
             
             elements.instaStatusIndicator.className = "status-indicator";
             elements.instaStatusText.textContent = "Instagram connection is not active.";
@@ -181,8 +183,7 @@ document.addEventListener("DOMContentLoaded", () => {
             following.textContent = "Error";
             views.textContent = "Error";
             
-            // Restore local history post count
-            elements.historyValue.textContent = state.history.posts ? state.history.posts.length : "0";
+            updateHistoryCountUI();
             
             elements.instaStatusIndicator.className = "status-indicator error";
             elements.instaStatusText.textContent = result.message || "Connection failed.";
@@ -198,6 +199,23 @@ document.addEventListener("DOMContentLoaded", () => {
             return (num / 1000).toFixed(1).replace(/\.0$/, "") + "K";
         }
         return num.toString();
+    }
+
+    function updateHistoryCountUI() {
+        const liveCount = (state.instagramProfile && state.instagramProfile.status === "online" && state.instagramProfile.data && state.instagramProfile.data.posts_count !== undefined)
+            ? state.instagramProfile.data.posts_count
+            : null;
+            
+        const historyCount = (state.history && state.history.posts)
+            ? state.history.posts.length
+            : 0;
+            
+        if (liveCount !== null) {
+            // If online, show the actual live post count on the profile, or history count if it's somehow larger
+            elements.historyValue.textContent = Math.max(liveCount, historyCount);
+        } else {
+            elements.historyValue.textContent = historyCount;
+        }
     }
 
 
@@ -222,11 +240,12 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!res.ok) throw new Error("Failed to load history");
             state.history = await res.json();
             
-            elements.historyValue.textContent = state.history.posts.length;
+            updateHistoryCountUI();
             renderHistoryTable(state.history.posts);
         } catch (err) {
             console.error(err);
-            elements.historyValue.textContent = "0";
+            state.history = { posts: [] };
+            updateHistoryCountUI();
             showToast("Error loading history: " + err.message, "error");
         }
     }
@@ -286,6 +305,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const cardElements = elements.calendarTimelineList.querySelectorAll(".timeline-card");
         cardElements.forEach(el => el.remove());
 
+        // Remove existing dividers or completed container elements if present
+        const dividerElements = elements.calendarTimelineList.querySelectorAll(".timeline-divider, .completed-posts-container");
+        dividerElements.forEach(el => el.remove());
+
         if (state.calendar.length === 0) {
             elements.calendarEmptyState.classList.remove("hidden");
             elements.activeCalendarBadge.textContent = "No active calendar loaded";
@@ -297,14 +320,28 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         elements.calendarEmptyState.classList.add("hidden");
-        elements.activeCalendarBadge.textContent = `${state.calendar.length} posts scheduled`;
-        elements.scheduledValue.textContent = state.calendar.length;
+
+        const pendingPosts = [];
+        const completedPosts = [];
+
+        state.calendar.forEach((post, index) => {
+            if (post.is_done) {
+                completedPosts.push({ post, index });
+            } else {
+                pendingPosts.push({ post, index });
+            }
+        });
+
+        const pendingCount = pendingPosts.length;
+        const totalCount = state.calendar.length;
+
+        elements.activeCalendarBadge.textContent = `${pendingCount} pending / ${totalCount} total`;
+        elements.scheduledValue.textContent = pendingCount;
         elements.saveBtn.classList.remove("hidden");
         elements.exportBtn.classList.remove("hidden");
 
-        // Parse date for building calendar cards
-        state.calendar.forEach((post, index) => {
-            // Find index of pillar to assign matching color code
+        // Helper to construct individual cards
+        function createTimelineCard(post, index) {
             const pillarIndex = state.config.default_pillars.indexOf(post.post_type);
             const pillarClass = pillarIndex !== -1 ? `pillar-${pillarIndex}` : "";
 
@@ -341,8 +378,63 @@ document.addEventListener("DOMContentLoaded", () => {
             `;
 
             card.addEventListener("click", () => selectPost(index));
+            return card;
+        }
+
+        // Render pending posts
+        pendingPosts.forEach(({ post, index }) => {
+            const card = createTimelineCard(post, index);
             elements.calendarTimelineList.appendChild(card);
         });
+
+        // Render completed posts in a collapsible container if any
+        if (completedPosts.length > 0) {
+            const divider = document.createElement("div");
+            divider.className = "timeline-divider";
+            
+            if (state.completedCollapsed === undefined) {
+                state.completedCollapsed = false;
+            }
+            
+            const caretIconClass = state.completedCollapsed ? "fa-chevron-right" : "fa-chevron-down";
+            divider.innerHTML = `
+                <span><i class="fa-solid fa-circle-check" style="color: var(--teal);"></i> Completed (${completedPosts.length})</span>
+                <button class="icon-btn-toggle" style="font-size: 0.75rem; width: 24px; height: 24px;"><i class="fa-solid ${caretIconClass}"></i></button>
+            `;
+            elements.calendarTimelineList.appendChild(divider);
+
+            const completedContainer = document.createElement("div");
+            completedContainer.className = "completed-posts-container";
+            if (state.completedCollapsed) {
+                completedContainer.style.display = "none";
+            } else {
+                completedContainer.style.display = "flex";
+                completedContainer.style.flexDirection = "column";
+                completedContainer.style.gap = "0.75rem";
+            }
+
+            completedPosts.forEach(({ post, index }) => {
+                const card = createTimelineCard(post, index);
+                completedContainer.appendChild(card);
+            });
+            elements.calendarTimelineList.appendChild(completedContainer);
+
+            // Toggle logic
+            divider.style.cursor = "pointer";
+            divider.addEventListener("click", () => {
+                state.completedCollapsed = !state.completedCollapsed;
+                const icon = divider.querySelector("button i");
+                if (state.completedCollapsed) {
+                    completedContainer.style.display = "none";
+                    icon.className = "fa-solid fa-chevron-right";
+                } else {
+                    completedContainer.style.display = "flex";
+                    completedContainer.style.flexDirection = "column";
+                    completedContainer.style.gap = "0.75rem";
+                    icon.className = "fa-solid fa-chevron-down";
+                }
+            });
+        }
 
         // Maintain selection after reload if index is valid
         if (state.activePostIndex !== null && state.activePostIndex < state.calendar.length) {
@@ -378,8 +470,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Toggle active card CSS
         const cards = elements.calendarTimelineList.querySelectorAll(".timeline-card");
-        cards.forEach((card, i) => {
-            if (i === index) card.classList.add("active");
+        cards.forEach((card) => {
+            if (parseInt(card.dataset.index) === index) card.classList.add("active");
             else card.classList.remove("active");
         });
 
