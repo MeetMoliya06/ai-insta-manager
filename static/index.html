@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Gen Studios — AI Social Media Manager</title>
+    <title>AI Social Media Manager</title>
     <!-- Google Fonts: Outfit & Plus Jakarta Sans -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,7 +11,7 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- CSS Stylesheet -->
-    <link rel="stylesheet" href="style.css?v=1.0.3">
+    <link rel="stylesheet" href="style.css?v=2.0.0">
 </head>
 <body>
     <!-- Background glowing orbs for premium visual layout -->
@@ -19,20 +19,61 @@
     <div class="glow-orb orb-teal"></div>
     <div class="glow-orb orb-amber"></div>
 
-    <div class="app-container">
+    <!-- AUTH OVERLAY (login / first-run setup) -->
+    <div class="modal-backdrop" id="auth-overlay">
+        <div class="modal-content glass-card" style="max-width: 380px;">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-lock"></i> <span id="auth-title">Dashboard Login</span></h3>
+            </div>
+            <div class="modal-body">
+                <p class="field-hint" id="auth-hint">Enter the dashboard password to continue.</p>
+                <div class="form-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password">
+                </div>
+                <div class="form-group hidden" id="auth-confirm-group">
+                    <label for="auth-password-confirm">Confirm Password</label>
+                    <input type="password" id="auth-password-confirm" placeholder="••••••••" autocomplete="new-password">
+                </div>
+                <p class="field-hint error-text hidden" id="auth-error"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="auth-submit-btn" style="width: 100%;">Log In</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-container hidden" id="app-container">
         <!-- HEADER -->
         <header class="app-header">
             <div class="header-logo-container">
                 <div class="logo-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
                 <div class="logo-text">
-                    <h1>NEW GEN STUDIOS</h1>
-                    <span class="logo-sub">AI Social Media Manager</span>
+                    <h1>AI SOCIAL MEDIA MANAGER</h1>
+                    <span class="logo-sub">Multi-Company Content Studio</span>
                 </div>
+            </div>
+
+            <div class="header-controls-bar">
+                <div class="company-switcher">
+                    <select id="company-select" title="Active company"></select>
+                    <button class="icon-btn" id="edit-company-btn" title="Edit company profile"><i class="fa-solid fa-pen"></i></button>
+                    <button class="icon-btn" id="new-company-btn" title="Add new company"><i class="fa-solid fa-plus"></i></button>
+                </div>
+                <select id="platform-select" class="platform-select" title="Active platform">
+                    <option value="instagram">Instagram</option>
+                    <option value="facebook">Facebook</option>
+                    <option value="linkedin">LinkedIn</option>
+                    <option value="google_business">Google Business Profile</option>
+                </select>
+                <button class="icon-btn" id="open-connections-btn" title="Manage platform connections">
+                    <i class="fa-solid fa-plug"></i>
+                </button>
             </div>
 
             <div class="header-status-bar">
                 <div class="status-badge brand-handle" id="brand-handle-badge">
-                    <i class="fa-brands fa-instagram"></i> <span id="brand-handle-text">@newgenstudios.ai</span>
+                    <i class="fa-brands fa-instagram" id="brand-handle-icon"></i> <span id="brand-handle-text">Offline Mode</span>
                 </div>
                 <div class="status-metric" id="metric-followers">
                     <span class="metric-value">-</span>
@@ -54,7 +95,7 @@
                     <span class="metric-value">-</span>
                     <span class="metric-label">Scheduled Posts</span>
                 </div>
-                <button class="icon-btn" id="open-settings-btn" title="API Settings">
+                <button class="icon-btn" id="open-settings-btn" title="System Settings">
                     <i class="fa-solid fa-sliders"></i>
                 </button>
             </div>
@@ -62,10 +103,10 @@
 
         <!-- MAIN LAYOUT -->
         <main class="dashboard-grid">
-            
+
             <!-- LEFT COLUMN: GENERATOR & TIMELINE -->
             <section class="left-column">
-                
+
                 <!-- GENERATOR CONTROL BOARD -->
                 <div class="card glass-card control-board">
                     <div class="card-header">
@@ -101,6 +142,7 @@
                                 </select>
                             </div>
                         </div>
+                        <p class="field-hint" id="generate-platform-hint">Generating content for <strong>Instagram</strong> — switch platform using the selector in the header.</p>
 
                         <!-- Content Pillars Collapse -->
                         <div class="pillars-collapse" id="pillars-container">
@@ -110,16 +152,38 @@
                             </div>
                         </div>
 
+                        <!-- Live Trend Monitoring Panel -->
+                        <div class="trends-panel" id="trends-panel">
+                            <div class="trends-panel-header">
+                                <label class="section-label" style="margin: 0;"><i class="fa-solid fa-fire"></i> Trending Right Now</label>
+                                <div class="trends-panel-actions">
+                                    <span class="trends-updated-at" id="trends-updated-at"></span>
+                                    <button class="icon-btn-toggle" id="refresh-trends-btn" title="Check Trends">
+                                        <i class="fa-solid fa-arrows-rotate"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="trends-cards-row" id="trends-cards-row">
+                                <div class="trends-empty-hint" id="trends-empty-hint">
+                                    <i class="fa-solid fa-fire"></i> Check what's trending on <strong id="trends-platform-label">Instagram</strong> right now.
+                                </div>
+                            </div>
+                            <label class="use-trends-toggle">
+                                <input type="checkbox" id="use-trends-checkbox">
+                                <span>Feed these trends into the next generation</span>
+                            </label>
+                        </div>
+
                         <div class="action-row">
                             <button class="btn btn-primary" id="generate-btn">
                                 <span class="btn-text"><i class="fa-solid fa-sparkles"></i> Generate AI Calendar</span>
                                 <span class="spinner hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
                             </button>
-                            
+
                             <button class="btn btn-secondary hidden" id="save-btn" title="Save changes made in active studio">
                                 <i class="fa-solid fa-floppy-disk"></i> Save
                             </button>
-                            
+
                             <button class="btn btn-export hidden" id="export-btn" title="Commit to history and export styled Excel">
                                 <i class="fa-solid fa-file-excel"></i> Commit & Export Excel
                             </button>
@@ -140,11 +204,39 @@
                     </div>
                 </div>
 
+                <!-- IDEA TO POST -->
+                <div class="card glass-card control-board" id="idea-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-lightbulb"></i> Got an Idea?</h2>
+                    </div>
+                    <div class="planner-form">
+                        <p class="field-hint">Describe your idea in plain words — AI will turn it into a full post (hook, caption, hashtags, image prompt, script) and add it to the calendar for <strong id="idea-platform-hint">Instagram</strong>.</p>
+                        <div class="form-group">
+                            <textarea id="idea-input" rows="3" placeholder="e.g. A reel showing our product being unboxed for the first time, focused on the 'wow' reaction..."></textarea>
+                        </div>
+                        <div class="action-row">
+                            <button class="btn btn-primary" id="idea-generate-btn">
+                                <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate Post From Idea</span>
+                                <span class="spinner hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- TIMELINE VIEW -->
                 <div class="timeline-container">
                     <div class="timeline-header">
                         <h3><i class="fa-solid fa-calendar-days"></i> Content Calendar Timeline</h3>
-                        <span class="timeline-count" id="active-calendar-badge">No active calendar loaded</span>
+                        <div class="timeline-header-right">
+                            <select id="calendar-platform-filter" class="platform-filter-select">
+                                <option value="all">All Platforms</option>
+                                <option value="instagram">Instagram</option>
+                                <option value="facebook">Facebook</option>
+                                <option value="linkedin">LinkedIn</option>
+                                <option value="google_business">Google Business</option>
+                            </select>
+                            <span class="timeline-count" id="active-calendar-badge">No active calendar loaded</span>
+                        </div>
                     </div>
 
                     <div class="calendar-list" id="calendar-timeline-list">
@@ -162,7 +254,7 @@
             <!-- RIGHT COLUMN: POST STUDIO EDITOR -->
             <section class="right-column">
                 <div class="card glass-card studio-card" id="studio-panel">
-                    
+
                     <!-- Studio Empty State -->
                     <div class="empty-state studio-empty" id="studio-empty-state">
                         <div class="empty-icon"><i class="fa-solid fa-clapperboard"></i></div>
@@ -172,7 +264,7 @@
 
                     <!-- Studio Active Editor Content -->
                     <div class="studio-content hidden" id="studio-editor-content">
-                        
+
                         <!-- Post Meta Header -->
                         <div class="studio-meta-header">
                             <div class="meta-main">
@@ -186,6 +278,7 @@
                                 <button class="btn-status-toggle" id="studio-done-btn" title="Toggle Uploaded Status">
                                     <i class="fa-regular fa-circle-check"></i> <span>Mark Done</span>
                                 </button>
+                                <span class="format-badge" id="studio-platform-badge"><i class="fa-brands fa-instagram"></i> Instagram</span>
                                 <span class="format-badge" id="studio-format-badge"><i class="fa-solid fa-video"></i> Reel</span>
                             </div>
                         </div>
@@ -202,12 +295,12 @@
                         <!-- Caption & CTA -->
                         <div class="studio-section caption-section">
                             <div class="section-header">
-                                <label><i class="fa-solid fa-align-left"></i> Instagram Caption & Call-to-Action</label>
+                                <label><i class="fa-solid fa-align-left"></i> Caption & Call-to-Action</label>
                                 <div class="caption-actions">
                                     <button class="btn-copy-mini" id="copy-caption-btn" title="Copy Caption"><i class="fa-regular fa-copy"></i> Copy Caption</button>
                                 </div>
                             </div>
-                            <textarea class="textarea-caption" id="studio-caption-input" rows="8" placeholder="Instagram caption goes here..."></textarea>
+                            <textarea class="textarea-caption" id="studio-caption-input" rows="8" placeholder="Caption goes here..."></textarea>
                         </div>
 
                         <!-- Visual Studio: AI Prompt Generator -->
@@ -226,12 +319,38 @@
                                 <a href="https://runwayml.com" target="_blank" class="quick-link-btn" id="runway-link"><i class="fa-solid fa-bolt"></i> RunwayML</a>
                                 <a href="https://klingai.com" target="_blank" class="quick-link-btn" id="kling-link"><i class="fa-solid fa-wand-magic"></i> Kling</a>
                             </div>
+                            <div class="generate-image-row">
+                                <button class="btn-generate-image" id="generate-image-btn" title="Generate this image with AI, one click">
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> <span>Generate Image with AI</span>
+                                </button>
+                            </div>
+                            <div class="generated-image-preview hidden" id="generated-image-preview">
+                                <img id="generated-image-preview-img" src="" alt="AI-generated post image" />
+                            </div>
+                        </div>
+
+                        <!-- Script -->
+                        <div class="studio-section script-section">
+                            <div class="section-header">
+                                <label><i class="fa-solid fa-clapperboard"></i> Script</label>
+                                <button class="btn-copy-mini" id="copy-script-btn" title="Copy Script"><i class="fa-regular fa-copy"></i> Copy</button>
+                            </div>
+                            <textarea class="textarea-notes" id="studio-script-input" rows="5" placeholder="Shot-by-shot / slide-by-slide script goes here..."></textarea>
+                        </div>
+
+                        <!-- Editing Style -->
+                        <div class="studio-section editing-style-section">
+                            <div class="section-header">
+                                <label><i class="fa-solid fa-film"></i> Editing Style</label>
+                                <button class="btn-copy-mini" id="copy-editing-style-btn" title="Copy Editing Style"><i class="fa-regular fa-copy"></i> Copy</button>
+                            </div>
+                            <textarea class="textarea-notes" id="studio-editing-style-input" rows="3" placeholder="Editing/production direction goes here..."></textarea>
                         </div>
 
                         <!-- Hashtags -->
                         <div class="studio-section hashtags-section">
                             <div class="section-header">
-                                <label><i class="fa-solid fa-hashtag"></i> Curated Hashtags (25)</label>
+                                <label><i class="fa-solid fa-hashtag"></i> Hashtags</label>
                                 <button class="btn-copy-mini" id="copy-hashtags-btn" title="Copy Hashtags"><i class="fa-regular fa-copy"></i> Copy Hashtags</button>
                             </div>
                             <textarea class="textarea-hashtags" id="studio-hashtags-input" rows="2" placeholder="#hashtags..."></textarea>
@@ -292,6 +411,101 @@
         </footer>
     </div>
 
+    <!-- COMPANY PROFILE MODAL (create / edit) -->
+    <div class="modal-backdrop hidden" id="company-modal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-building"></i> <span id="company-modal-title">New Company</span></h3>
+                <button class="icon-close" id="close-company-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="company-name">Company / Brand Name</label>
+                    <input type="text" id="company-name" placeholder="e.g. Acme Jewellery Co.">
+                </div>
+                <div class="form-group">
+                    <label for="company-industry">Industry</label>
+                    <input type="text" id="company-industry" placeholder="e.g. D2C Fashion Ecommerce">
+                </div>
+
+                <div class="form-row research-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="company-website">Website URL <span class="field-hint">(for deep research)</span></label>
+                        <input type="text" id="company-website" placeholder="https://example.com">
+                    </div>
+                    <div class="form-group toggle-field" id="auto-research-field">
+                        <label for="company-auto-research">Auto-Research</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="company-auto-research" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="research-status-box hidden" id="research-status-box">
+                    <div class="research-status-header">
+                        <div class="research-status-left">
+                            <i class="fa-solid fa-magnifying-glass-chart"></i>
+                            <span id="research-status-text">Not yet researched</span>
+                        </div>
+                        <button class="btn-copy-mini" id="rerun-research-btn" title="Re-run deep research">
+                            <i class="fa-solid fa-rotate"></i> Re-run Research
+                        </button>
+                    </div>
+                    <p class="field-hint research-summary-text" id="research-summary-text"></p>
+                    <div class="research-sources hidden" id="research-sources"></div>
+                </div>
+                <div class="research-loading hidden" id="research-loading">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i> Researching business — this can take up to a minute...
+                </div>
+
+                <div class="form-group">
+                    <label for="company-context">Business Context</label>
+                    <textarea id="company-context" rows="4" placeholder="What does this business do, what makes it different, key offers..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="company-audience">Target Audience</label>
+                    <textarea id="company-audience" rows="3" placeholder="Who are you speaking to? Demographics, pain points, goals..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="company-voice">Brand Voice</label>
+                    <textarea id="company-voice" rows="2" placeholder="e.g. Premium, modern, conversational, bold..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="company-cta">Default Call-to-Action</label>
+                    <input type="text" id="company-cta" placeholder='e.g. DM us "START" to get a free consultation'>
+                </div>
+                <div class="form-group">
+                    <label for="company-pillars">Content Pillars <span class="field-hint">(one per line)</span></label>
+                    <textarea id="company-pillars" rows="5" placeholder="Before/After transformation&#10;Educational&#10;Client testimonial"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer" style="justify-content: space-between;">
+                <button class="btn btn-secondary hidden" id="delete-company-btn" style="color: var(--red); border-color: var(--red);">Delete Company</button>
+                <div style="display: flex; gap: 0.75rem;">
+                    <button class="btn btn-secondary" id="cancel-company-btn">Cancel</button>
+                    <button class="btn btn-primary" id="save-company-btn">Save Company</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PLATFORM CONNECTIONS MODAL -->
+    <div class="modal-backdrop hidden" id="connections-modal">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-plug"></i> Platform Connections</h3>
+                <button class="icon-close" id="close-connections-btn"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body" id="connections-body">
+                <!-- Rendered dynamically per platform via JS -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="close-connections-footer-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- SETTINGS FLOATING MODAL -->
     <div class="modal-backdrop hidden" id="settings-modal">
         <div class="modal-content glass-card">
@@ -299,7 +513,7 @@
                 <h3><i class="fa-solid fa-sliders"></i> System Settings</h3>
                 <button class="icon-close" id="close-settings-btn"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            
+
             <div class="modal-body">
                 <!-- GEMINI API SECTION -->
                 <div class="form-group">
@@ -310,7 +524,7 @@
                             <i class="fa-regular fa-eye"></i>
                         </button>
                     </div>
-                    <p class="field-hint">Your API Key is saved directly in the project's secure local <code>.env</code> file.</p>
+                    <p class="field-hint">This key powers content generation for every company in this dashboard. Saved to the local <code>.env</code> file (and Supabase, if connected).</p>
                 </div>
 
                 <div class="settings-status-box" id="key-status-box">
@@ -320,26 +534,20 @@
 
                 <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 0.5rem 0;">
 
-                <!-- INSTAGRAM CONNECTION STATUS -->
-                <div class="form-group">
-                    <label style="color: #cfcde6; display: flex; align-items: center; gap: 0.35rem;">
-                        <i class="fa-brands fa-instagram" style="color: var(--purple);"></i> Instagram Connection Status
-                    </label>
-                    <p class="field-hint" style="margin-bottom: 0.5rem;">Configure credentials in your local <code>.env</code> file to sync automatically.</p>
-                </div>
-                <div class="settings-status-box" id="insta-status-box">
-                    <div class="status-indicator" id="insta-status-indicator"></div>
-                    <span class="status-message" id="insta-status-text">Checking Instagram status...</span>
-                </div>
-
-                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 0.5rem 0;">
-
                 <!-- SUPABASE CLOUD SYNC STATUS -->
                 <div class="form-group">
                     <label style="color: #cfcde6; display: flex; align-items: center; gap: 0.35rem;">
                         <i class="fa-solid fa-cloud" style="color: var(--teal);"></i> Supabase Database Sync Status
                     </label>
-                    <p class="field-hint" style="margin-bottom: 0.5rem;">Configure Project URL & Anon Key in your <code>.env</code> file to enable cloud database backups.</p>
+                    <p class="field-hint" style="margin-bottom: 0.5rem;">Required for true multi-company storage. Configure Project URL & Anon Key below, or in your <code>.env</code> file.</p>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <input type="text" id="settings-supabase-url" placeholder="https://xxxx.supabase.co">
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="settings-supabase-key" placeholder="Anon public key">
+                    </div>
                 </div>
                 <div class="settings-status-box" id="supabase-status-box">
                     <div class="status-indicator" id="supabase-status-indicator"></div>
@@ -349,7 +557,7 @@
 
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="cancel-settings-btn">Cancel</button>
-                <button class="btn btn-primary" id="save-settings-btn">Save Key Settings</button>
+                <button class="btn btn-primary" id="save-settings-btn">Save Settings</button>
             </div>
         </div>
     </div>
@@ -361,6 +569,6 @@
     </div>
 
     <!-- Client-side Orchestrator Script -->
-    <script src="app.js?v=1.0.3"></script>
+    <script src="app.js?v=2.0.0"></script>
 </body>
 </html>

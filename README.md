@@ -1,40 +1,62 @@
-# 🤖 New Gen Studios — AI Social Media Manager
+# 🤖 AI Social Media Manager
 
-Welcome to the **New Gen Studios AI Social Media Manager**, a state-of-the-art agentic AI content planner and beautiful web dashboard designed specifically for luxury brand social media curation. 
-
-**New Gen Studios (@newgenstudios.ai)** is an AI-powered creative agency based in Surat, India. We specialize in producing luxury product photoshoots and cinematic Instagram Reels for high-end jewellery and fashion brands (saree, ethnic wear, apparel) using advanced AI technologies. This tool automates the core workflows of our social media strategy—content ideation, dynamic scheduling, copy generation, and metric tracking.
+A multi-company, multi-platform agentic AI content planner and dashboard. Manage content strategy for as many client brands as you want from one dashboard — each with its own business context, target audience, content pillars, calendar, and platform connections.
 
 ---
 
 ## ✨ Features
 
-- **📺 Interactive Web Dashboard**: A premium, custom-styled frontend interface serving real-time analytics, settings management, calendar previews, editing blocks, and instant Excel exports.
-- **🧠 Gemini AI Post Generator**: Seamlessly interfaces with the Google Gemini API (`gemini-2.5-flash` or newer) utilizing structured JSON generation. Generates high-converting, scroll-stopping hooks, hashtags, CTAs, and highly detailed visual generation prompts (customized for Midjourney, Runway, and Kling).
-- **📸 Instagram Live Sync (`instagrapi`)**: Connects securely to Instagram to dynamically retrieve live profile statistics (followers, following, post counts) and video views from recent Reels.
-- **☁️ Supabase Cloud Synchronization**: Features real-time bidirectional sync. Instantly replicates local configuration keys, post histories, and scheduled calendars to a cloud database, providing seamless state persistence across multiple environments.
-- **📊 Premium Multi-Sheet Excel Export**: Exports content calendars using highly customized `openpyxl` style maps (corporate teal, warm amber, and elegant lavender). The export contains three dedicated sheets:
-  1. **Content Calendar**: Full timeline calendar with formatting indicators and checkboxes.
-  2. **AI Image Prompts**: Standalone prompts optimized for copy-pasting directly into Midjourney/Leonardo (images) and RunwayML/Kling (videos).
-  3. **Caption & Hashtag Bank**: Direct, ready-to-copy captions paired with exactly 25 highly targeted hashtags.
-- **🚫 Anti-Repetition Engine**: Automatically loads past posts to build a strategic historical context block, ensuring the AI never repeats topics, themes, or hook formulas.
+- **🏢 Multi-Company**: Add unlimited companies/brands, each with its own business context, target audience, brand voice, content pillars, and CTA. Switch between them from the header.
+- **📣 Multi-Platform Content**: Generate platform-tailored content for **Instagram**, **Facebook**, **LinkedIn**, and **Google Business Profile** — the AI prompt adapts format, tone, hashtag count, and caption length per platform.
+- **🔐 Password-Protected Dashboard**: A single operator password gates the whole dashboard (first run walks you through setting it).
+- **🧠 Gemini AI Post Generator**: Structured JSON generation via Google Gemini, producing hooks, captions, hashtags, CTAs, and detailed visual generation prompts (for Midjourney/Runway/Kling).
+- **📸 Instagram Live Stats**: Connects to Instagram (via `instagrapi`) per company to pull live follower/post stats and recent-post history for the anti-repetition engine.
+- **☁️ Supabase Cloud Sync**: Optional — stores companies, platform connections, calendars, and history centrally so the dashboard can be deployed anywhere. Without it, everything still works using local JSON files under `data/`.
+- **📊 Premium Excel Export**: Per-company, multi-sheet `.xlsx` export (Content Calendar, AI Image Prompts, Caption & Hashtag Bank).
+- **🚫 Anti-Repetition Engine**: Tracks past posts per company + platform so the AI never repeats topics, hooks, or themes.
+
+---
+
+## 📣 Platform Support Status
+
+| Platform | Content Generation | Live Stats / Auto-Publish |
+|---|---|---|
+| Instagram | ✅ | ✅ Live stats (via `instagrapi`, unofficial login) — publishing not supported |
+| Facebook | ✅ | 🚧 Needs a Meta developer app (Graph API) |
+| LinkedIn | ✅ | 🚧 Needs LinkedIn Community Management API access |
+| Google Business Profile | ✅ | 🚧 Needs a Google Cloud project with Business Profile API access |
+
+**Content generation works for all four platforms today** — Gemini writes platform-appropriate captions, hashtags, and formats that you copy into each platform's native scheduler or the Excel export.
+
+**Live stats and automated publishing** require an official developer app per platform, which only the account owner can register and get approved:
+- **Facebook + Instagram**: create a Meta app at [developers.facebook.com](https://developers.facebook.com), add "Facebook Login for Business," and request `pages_manage_posts`, `pages_read_engagement`, `instagram_basic`, `instagram_content_publish` (subject to Meta App Review).
+- **LinkedIn**: create an app at [linkedin.com/developers](https://linkedin.com/developers) and request Community Management API access (needed to post as a Company Page).
+- **Google Business Profile**: create a Google Cloud project, enable the Business Profile APIs, and request production access via Google's access request form.
+
+Once you have credentials for a platform, the connector interface in `platforms/` is ready to be filled in (see `platforms/facebook.py`, `platforms/linkedin.py`, `platforms/google_business.py`).
 
 ---
 
 ## 📂 Project Architecture
 
 ```bash
-├── main.py                    # ⚡ FastAPI application & dashboard endpoints
-├── social_media_agent.py      # 🤖 Core agent logic, Google GenAI, Instagrapi, & Excel exporter
-├── schema.sql                 # ⚡ SQL migrations to configure Supabase tables
+├── main.py                    # ⚡ FastAPI application, auth, and company-scoped API endpoints
+├── social_media_agent.py      # 🤖 Dynamic prompt builder, data access (Supabase + local), Excel exporter
+├── platforms/                 # 🔌 Per-platform connector interface (stats / history / publish)
+│   ├── base.py                #   └─ PlatformConnector interface
+│   ├── instagram.py           #   └─ Live Instagram stats via instagrapi
+│   ├── facebook.py            #   └─ Stub — needs Meta Graph API credentials
+│   ├── linkedin.py            #   └─ Stub — needs LinkedIn Community Management API access
+│   └── google_business.py     #   └─ Stub — needs Google Business Profile API access
+├── schema.sql                 # ⚡ SQL migrations to configure Supabase tables (companies, connections, etc.)
 ├── static/                    # 🎨 Dashboard web frontend
 │   ├── index.html             #   └─ Interactive HTML structure
 │   ├── style.css              #   └─ Custom styling & dynamic layout
 │   └── app.js                 #   └─ Frontend controller & API fetch logic
+├── data/                      # 📅 Local fallback storage (companies, calendars, history) when Supabase isn't configured
 ├── requirements.txt           # 📦 Python package dependencies
 ├── .env                       # 🔑 Sensitive credentials (local only)
-├── .gitignore                 # 🚫 Git ignoring environments, XLSX, & sessions
-├── current_calendar.json      # 📅 Local temporary calendar cache
-└── posts_history.json         # 📚 Local backup of post histories
+└── .gitignore
 ```
 
 ---
@@ -42,89 +64,61 @@ Welcome to the **New Gen Studios AI Social Media Manager**, a state-of-the-art a
 ## 🛠️ Installation & Setup
 
 ### 1. Prerequisites
-Ensure you have **Python 3.9+** and `pip` installed on your machine.
+Python 3.9+ and `pip`.
 
-### 2. Clone the Repository & Setup Environment
-Navigate to your project directory and initialize a virtual environment:
+### 2. Setup Environment
 
 ```bash
-# Clone the repository and enter the directory
 cd ai_social_media_manager
-
-# Create virtual environment
 python3 -m venv .venv
-
-# Activate virtual environment
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install required dependencies
 pip install -r requirements.txt
 ```
 
 ### 3. Environment Configuration
-Create a `.env` file in the root of the project (already ignored in `.gitignore`) and define the following variables:
+
+Create a `.env` file in the project root:
 
 ```ini
-# 🔑 Gemini API Credentials
+# 🔑 Gemini API Credentials (required)
 GEMINI_API_KEY="your_gemini_api_key"
 
-# 📸 Instagram Credentials (Optional)
-INSTAGRAM_USERNAME="newgenstudios.ai"
-INSTAGRAM_PASSWORD="your_instagram_password"
-
-# ☁️ Supabase Cloud Sync (Optional)
+# ☁️ Supabase Cloud Sync (optional — recommended for real multi-company use)
 SUPABASE_URL="https://your-supabase-project.supabase.co"
 SUPABASE_KEY="your-anon-public-key"
 ```
-*Note: You can also configure these settings dynamically from the Settings panel directly inside the web dashboard.*
+
+*Instagram credentials, the dashboard password, and everything else are configured from the dashboard itself — no need to hand-edit `.env` for those.*
 
 ---
 
 ## ⚡ Supabase Setup (Optional but Recommended)
 
-To leverage the real-time cloud synchronization features:
+Without Supabase, all data (companies, calendars, history, connections) is stored in local JSON files under `data/` — fine for a single machine, but it won't survive a redeploy or be shared across environments.
+
 1. Create a free project on [Supabase](https://supabase.com).
-2. Open the **SQL Editor** in your Supabase dashboard.
-3. Paste the contents of `schema.sql` into the SQL Editor and click **Run**.
-4. Copy your project's **API URL** and **Anon public key** into the Dashboard Settings under **Supabase Sync Setup**.
-5. Once saved, your local data will automatically synchronize and back up to the cloud!
+2. Open the **SQL Editor** and paste in the contents of `schema.sql`, then **Run**. It's safe to re-run.
+3. Copy your project's **API URL** and **Anon public key** into the dashboard's **Settings** panel (or `.env`).
 
 ---
 
 ## 🚀 Running the Application
 
-### Option A: The Interactive Web Dashboard (Recommended)
-Launch the FastAPI development server to interact with the visual dashboard:
-
 ```bash
 python main.py
 ```
-After the server boots up, open your web browser and navigate to:
-👉 **[http://127.0.0.1:8000](http://127.0.0.1:8000)**
 
-*From the dashboard, you can:*
-- View real-time Instagram metrics.
-- Modify Gemini models, post frequency, and custom content pillars.
-- Review and live-edit generated captions, hooks, and prompts before saving.
-- Download the final high-quality Excel spreadsheet instantly.
+Then open **[http://127.0.0.1:8000](http://127.0.0.1:8000)**.
 
----
-
-### Option B: The CLI Agent
-If you prefer running the generator directly from your terminal:
-
-```bash
-python social_media_agent.py
-```
-This script will:
-1. Retrieve historical data from your active database.
-2. Direct-generate `8` fresh posts (defaulting to a 2-week plan of 4 posts per week).
-3. Schedule them on best-performing days (Tuesday, Thursday, Friday, Saturday, Sunday).
-4. Save the beautiful styled Excel template as `content_calendar.xlsx`.
-5. Update your local `posts_history.json` so it remembers them for future runs.
+**First run**: you'll be asked to set a dashboard password (protects every `/api/*` route with a session cookie), then create your first company. From there:
+- Switch companies via the header dropdown, or add new ones with the **+** button.
+- Edit a company's business context, audience, brand voice, pillars, and CTA — this is what drives the AI prompt, replacing what used to be hardcoded.
+- Pick the active platform from the header dropdown before generating — Instagram, Facebook, LinkedIn, or Google Business Profile.
+- Use the **plug icon** to manage platform connections per company (Instagram username/password today; the other three show what's needed to connect once you have official API credentials).
+- Generate, edit in the Studio panel, save, and export to Excel — same workflow as before, now per company and per platform.
 
 ---
 
 ## 🛡️ License
 
-This project is custom proprietary software developed for **New Gen Studios** (Surat, India). All rights reserved.
+Custom proprietary software. All rights reserved.

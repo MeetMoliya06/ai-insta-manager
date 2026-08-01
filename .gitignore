@@ -12,10 +12,13 @@ __pycache__/
 # 🔑 Credentials & Sensitive Sessions
 .env
 instagram_session.json
+instagram_sessions/
 
 # 📊 Local databases & backup assets
 current_calendar.json
 posts_history.json
+data/
+exports/
 *.xlsx
 
 # 🖥️ OS files

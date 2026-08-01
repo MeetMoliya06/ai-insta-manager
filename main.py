@@ -1,58 +1,107 @@
-import json
+import hashlib
+import hmac
 import os
+import secrets
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Body, Request
+
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv, set_key
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
-# Import functions from social_media_agent
 import social_media_agent as agent
+import research_agent
+import content_generator
+from platforms import get_connector, PLATFORMS, PLATFORM_LABELS
 
 load_dotenv()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+ENV_PATH = ".env"
+SESSION_COOKIE = "session"
+SESSION_MAX_AGE = 60 * 60 * 24 * 14  # 14 days
+EXPORT_DIR = "exports"
+
+# ──────────────────────────────────────────────────────────
+# Bootstrap a stable secret key for signing session cookies
+# ──────────────────────────────────────────────────────────
+_secret_key = os.environ.get("DASHBOARD_SECRET_KEY")
+if not _secret_key:
+    _secret_key = secrets.token_hex(32)
+    set_key(ENV_PATH, "DASHBOARD_SECRET_KEY", _secret_key)
+    os.environ["DASHBOARD_SECRET_KEY"] = _secret_key
+
+_serializer = URLSafeTimedSerializer(_secret_key)
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 200_000).hex()
+    return f"{salt}${digest}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        salt, digest = stored.split("$", 1)
+        candidate = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 200_000).hex()
+        return hmac.compare_digest(candidate, digest)
+    except Exception:
+        return False
+
+
+def get_password_hash() -> Optional[str]:
     supabase_url = os.environ.get("SUPABASE_URL")
     supabase_key = os.environ.get("SUPABASE_KEY")
     if supabase_url and supabase_key:
-        print("☁️ Supabase configured. Checking cloud data synchronization...")
-        try:
-            # Check if settings are synced
-            settings = agent.fetch_settings_supabase()
-            if not settings:
-                print("🔄 Initializing Supabase cloud sync & replicating local data...")
-                gemini_api_key = os.environ.get("GEMINI_API_KEY")
-                insta_user = os.environ.get("INSTAGRAM_USERNAME")
-                insta_pass = os.environ.get("INSTAGRAM_PASSWORD")
-                agent.save_settings_supabase(gemini_key=gemini_api_key, insta_user=insta_user, insta_pass=insta_pass)
-                
-                # Sync history
-                local_history = agent.load_history()
-                if local_history and local_history.get("posts"):
-                    agent.save_history_supabase(local_history["posts"])
-                    
-                # Sync calendar
-                local_calendar = load_current_calendar()
-                if local_calendar:
-                    agent.save_calendar_supabase(local_calendar)
-                print("✅ Supabase cloud database synchronization complete!")
-            else:
-                print("✅ Supabase cloud settings found and loaded.")
-        except Exception as e:
-            print(f"⚠️ Automatic Supabase sync failed on startup: {e}")
+        settings = agent.fetch_settings_supabase()
+        if settings and settings.get("dashboard_password_hash"):
+            return settings["dashboard_password_hash"]
+    return os.environ.get("DASHBOARD_PASSWORD_HASH")
+
+
+def set_password_hash(password_hash: str):
+    set_key(ENV_PATH, "DASHBOARD_PASSWORD_HASH", password_hash)
+    os.environ["DASHBOARD_PASSWORD_HASH"] = password_hash
+    agent.save_settings_supabase(dashboard_password_hash=password_hash)
+
+
+def make_session_cookie() -> str:
+    return _serializer.dumps({"auth": True})
+
+
+def is_authenticated(request: Request) -> bool:
+    cookie = request.cookies.get(SESSION_COOKIE)
+    if not cookie:
+        return False
+    try:
+        data = _serializer.loads(cookie, max_age=SESSION_MAX_AGE)
+        return bool(data.get("auth"))
+    except (BadSignature, SignatureExpired):
+        return False
+
+
+AUTH_EXEMPT_PATHS = {"/api/auth-status", "/api/login", "/api/setup-password"}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    os.makedirs(EXPORT_DIR, exist_ok=True)
+    os.makedirs(agent.DATA_DIR, exist_ok=True)
     yield
 
-app = FastAPI(
-    title="New Gen Studios — AI Social Media Manager Dashboard",
-    lifespan=lifespan
-)
+
+app = FastAPI(title="AI Social Media Manager Dashboard", lifespan=lifespan)
+
 
 @app.middleware("http")
-async def add_no_cache_headers(request: Request, call_next):
+async def auth_and_no_cache(request: Request, call_next):
+    if request.url.path.startswith("/api/") and request.url.path not in AUTH_EXEMPT_PATHS:
+        if not is_authenticated(request):
+            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
@@ -60,172 +109,176 @@ async def add_no_cache_headers(request: Request, call_next):
     return response
 
 
-CALENDAR_FILE = "current_calendar.json"
+def supabase_configured() -> bool:
+    return bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_KEY"))
 
-class ConfigResponse(BaseModel):
-    has_api_key: bool
-    default_pillars: List[str]
-    has_instagram: bool
-    instagram_username: Optional[str] = None
-    has_supabase: bool
-    supabase_url: Optional[str] = None
 
-class ConfigUpdateRequest(BaseModel):
+# ──────────────────────────────────────────────────────────
+# Pydantic models
+# ──────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    password: str
+
+
+class GeminiConfigRequest(BaseModel):
     api_key: str
 
-class InstagramConfigRequest(BaseModel):
-    username: str
-    password: str
 
 class SupabaseConfigRequest(BaseModel):
     url: str
     key: str
 
 
+class CompanyRequest(BaseModel):
+    name: str
+    industry: str = ""
+    business_context: str = ""
+    target_audience: str = ""
+    brand_voice: str = ""
+    content_pillars: List[str] = []
+    cta_text: str = ""
+    best_times: List[List[str]] = []
+    website_url: str = ""
+    auto_research: bool = False
+
+
+class ResearchRequest(BaseModel):
+    website_url: Optional[str] = None
+    socials_hint: Optional[str] = None
+
+
+class ConnectionRequest(BaseModel):
+    credentials: Dict[str, Any]
+    auth_type: str = "password"
+
 
 class GenerateRequest(BaseModel):
+    platform: str = "instagram"
     weeks: int = 2
     posts_per_week: int = 4
     pillars: List[str] = []
     model_name: str = "gemini-2.5-flash"
     append_to_existing: bool = True
+    use_trends: bool = False
+
+
+class IdeaGenerateRequest(BaseModel):
+    idea: str
+    platform: str = "instagram"
+    model_name: str = "gemini-2.5-flash"
+    use_trends: bool = False
+
 
 class PostItem(BaseModel):
     post_number: int
+    platform: str = "instagram"
     date: str
     day: str
     time: str
     post_type: str
+    idea_summary: str = ""
     reel_or_static: str
     hook: str
     caption: str
     hashtags: str
     image_prompt: str
+    script: str = ""
+    editing_style: str = ""
     cta: str
     notes_for_creator: str
     is_done: bool = False
+    image_url: Optional[str] = None
+
 
 class SaveRequest(BaseModel):
     posts: List[PostItem]
 
-# Ensure files exist or load them
-def load_current_calendar() -> List[dict]:
-    # 1. Try loading from Supabase first
-    supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_KEY")
-    if supabase_url and supabase_key:
-        calendar = agent.load_calendar_supabase()
-        if calendar is not None:
-            return calendar
 
-    # 2. Local fallback
-    if os.path.exists(CALENDAR_FILE):
-        try:
-            with open(CALENDAR_FILE) as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
-
-def save_current_calendar(posts: List[dict]):
-    # 1. Try saving to Supabase first
-    supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_KEY")
-    if supabase_url and supabase_key:
-        agent.save_calendar_supabase(posts)
-
-    # 2. Local backup
-    with open(CALENDAR_FILE, "w") as f:
-        json.dump(posts, f, indent=2)
+class GenerateImageRequest(BaseModel):
+    post_index: int
 
 
-@app.get("/api/config", response_model=ConfigResponse)
+# ──────────────────────────────────────────────────────────
+# Auth endpoints
+# ──────────────────────────────────────────────────────────
+
+@app.get("/api/auth-status")
+def auth_status(request: Request):
+    return {
+        "setup_required": get_password_hash() is None,
+        "authenticated": is_authenticated(request),
+    }
+
+
+@app.post("/api/setup-password")
+def setup_password(data: LoginRequest, response: Response):
+    if get_password_hash() is not None:
+        raise HTTPException(status_code=403, detail="Dashboard password is already configured.")
+    password = data.password.strip()
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    set_password_hash(hash_password(password))
+    response.set_cookie(SESSION_COOKIE, make_session_cookie(), max_age=SESSION_MAX_AGE, httponly=True, samesite="lax")
+    return {"status": "success"}
+
+
+@app.post("/api/login")
+def login(data: LoginRequest, response: Response):
+    stored_hash = get_password_hash()
+    if not stored_hash:
+        raise HTTPException(status_code=400, detail="No password configured yet. Please complete setup first.")
+    if not verify_password(data.password, stored_hash):
+        raise HTTPException(status_code=401, detail="Incorrect password.")
+    response.set_cookie(SESSION_COOKIE, make_session_cookie(), max_age=SESSION_MAX_AGE, httponly=True, samesite="lax")
+    return {"status": "success"}
+
+
+@app.post("/api/logout")
+def logout(response: Response):
+    response.delete_cookie(SESSION_COOKIE)
+    return {"status": "success"}
+
+
+# ──────────────────────────────────────────────────────────
+# Operator-level settings (Gemini key, Supabase connection)
+# ──────────────────────────────────────────────────────────
+
+@app.get("/api/config")
 def get_config():
-    supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_KEY")
-    has_supabase = bool(supabase_url and supabase_key)
-    
+    has_supabase = supabase_configured()
     api_key = None
-    insta_user = None
-    insta_pass = None
-    
-    # If Supabase is connected, dynamically load all settings from Supabase
+
     if has_supabase:
         settings = agent.fetch_settings_supabase()
-        if settings:
-            api_key = settings.get("gemini_api_key")
-            insta_user = settings.get("instagram_username")
-            insta_pass = settings.get("instagram_password")
-            
-            # Keep process env synchronized so libraries work seamlessly
-            if api_key:
-                os.environ["GEMINI_API_KEY"] = api_key
-            if insta_user:
-                os.environ["INSTAGRAM_USERNAME"] = insta_user
-            if insta_pass:
-                os.environ["INSTAGRAM_PASSWORD"] = insta_pass
+        if settings and settings.get("gemini_api_key"):
+            api_key = settings["gemini_api_key"]
+            os.environ["GEMINI_API_KEY"] = api_key
 
-    # Local fallback/secondary source
     if not api_key:
         api_key = os.environ.get("GEMINI_API_KEY")
-    if not insta_user:
-        insta_user = os.environ.get("INSTAGRAM_USERNAME")
-    if not insta_pass:
-        insta_pass = os.environ.get("INSTAGRAM_PASSWORD")
 
     return {
         "has_api_key": bool(api_key),
-        "default_pillars": agent.CONTENT_PILLARS,
-        "has_instagram": bool(insta_user and insta_pass),
-        "instagram_username": insta_user,
+        "default_pillars": agent.DEFAULT_CONTENT_PILLARS,
+        "default_best_times": agent.DEFAULT_BEST_TIMES,
+        "platforms": PLATFORMS,
+        "platform_labels": PLATFORM_LABELS,
         "has_supabase": has_supabase,
-        "supabase_url": supabase_url
+        "supabase_url": os.environ.get("SUPABASE_URL"),
     }
 
 
 @app.post("/api/config")
-def update_config(data: ConfigUpdateRequest):
+def update_gemini_config(data: GeminiConfigRequest):
     key = data.api_key.strip()
     if not key:
         raise HTTPException(status_code=400, detail="API Key cannot be empty")
-    
-    # 1. Save locally to .env
-    env_path = ".env"
-    set_key(env_path, "GEMINI_API_KEY", key)
+    set_key(ENV_PATH, "GEMINI_API_KEY", key)
     os.environ["GEMINI_API_KEY"] = key
-    
-    # 2. Save to Supabase if active
     agent.save_settings_supabase(gemini_key=key)
-    
     return {"status": "success", "message": "Gemini API Key updated successfully"}
 
-@app.post("/api/instagram/config")
-def update_instagram_config(data: InstagramConfigRequest):
-    username = data.username.strip()
-    password = data.password.strip()
-    if not username or not password:
-        raise HTTPException(status_code=400, detail="Instagram Username and Password cannot be empty")
-    
-    # 1. Save locally to .env
-    env_path = ".env"
-    set_key(env_path, "INSTAGRAM_USERNAME", username)
-    set_key(env_path, "INSTAGRAM_PASSWORD", password)
-    
-    # Update current process environment
-    os.environ["INSTAGRAM_USERNAME"] = username
-    os.environ["INSTAGRAM_PASSWORD"] = password
-    
-    # Clean old session if credentials change
-    if os.path.exists(agent.SESSION_FILE):
-        try:
-            os.remove(agent.SESSION_FILE)
-        except Exception:
-            pass
-            
-    # 2. Save to Supabase if active
-    agent.save_settings_supabase(insta_user=username, insta_pass=password)
-            
-    return {"status": "success", "message": "Instagram credentials updated successfully"}
 
 @app.post("/api/supabase/config")
 def update_supabase_config(data: SupabaseConfigRequest):
@@ -233,239 +286,608 @@ def update_supabase_config(data: SupabaseConfigRequest):
     key = data.key.strip()
     if not url or not key:
         raise HTTPException(status_code=400, detail="Supabase URL and Anon Key cannot be empty")
-        
-    # 1. Save locally to .env
-    env_path = ".env"
-    set_key(env_path, "SUPABASE_URL", url)
-    set_key(env_path, "SUPABASE_KEY", key)
-    
-    # 2. Update process environment
+
+    set_key(ENV_PATH, "SUPABASE_URL", url)
+    set_key(ENV_PATH, "SUPABASE_KEY", key)
     os.environ["SUPABASE_URL"] = url
     os.environ["SUPABASE_KEY"] = key
-    
-    # 3. Auto-sync existing local data to newly connected Supabase cloud database
+
     try:
         gemini_api_key = os.environ.get("GEMINI_API_KEY")
-        insta_user = os.environ.get("INSTAGRAM_USERNAME")
-        insta_pass = os.environ.get("INSTAGRAM_PASSWORD")
-        agent.save_settings_supabase(gemini_key=gemini_api_key, insta_user=insta_user, insta_pass=insta_pass)
+        password_hash = os.environ.get("DASHBOARD_PASSWORD_HASH")
+        agent.save_settings_supabase(gemini_key=gemini_api_key, dashboard_password_hash=password_hash)
     except Exception as e:
         print(f"⚠️ Settings sync failed: {e}")
-        
-    try:
-        local_history = agent.load_history()
-        if local_history and local_history.get("posts"):
-            agent.save_history_supabase(local_history["posts"])
-    except Exception as e:
-        print(f"⚠️ History sync failed: {e}")
-        
-    try:
-        local_calendar = load_current_calendar()
-        if local_calendar:
-            agent.save_calendar_supabase(local_calendar)
-    except Exception as e:
-        print(f"⚠️ Calendar sync failed: {e}")
-        
-    return {"status": "success", "message": "Supabase connected and local database synchronized to cloud successfully!"}
+
+    return {"status": "success", "message": "Supabase connected successfully!"}
 
 
-@app.get("/api/instagram/profile")
-def get_instagram_profile():
-    username = os.environ.get("INSTAGRAM_USERNAME")
-    password = os.environ.get("INSTAGRAM_PASSWORD")
-    if not username or not password:
-        return {"status": "offline", "message": "Instagram credentials not configured."}
-        
+# ──────────────────────────────────────────────────────────
+# Company data-access helpers (Supabase-first, local-file fallback)
+# ──────────────────────────────────────────────────────────
+
+def list_companies() -> List[dict]:
+    if supabase_configured():
+        rows = agent.list_companies_supabase()
+        if rows is not None:
+            return rows
+    return agent.load_companies_local()
+
+
+def find_company(company_id: str) -> dict:
+    for c in list_companies():
+        if str(c.get("id")) == str(company_id):
+            return c
+    raise HTTPException(status_code=404, detail="Company not found")
+
+
+def create_company(data: dict) -> dict:
+    if supabase_configured():
+        row = agent.create_company_supabase(data)
+        if row:
+            return row
+    return agent.create_company_local(data)
+
+
+def update_company(company_id: str, data: dict) -> dict:
+    if supabase_configured():
+        row = agent.update_company_supabase(company_id, data)
+        if row:
+            return row
+    row = agent.update_company_local(company_id, data)
+    if not row:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return row
+
+
+def delete_company(company_id: str):
+    if supabase_configured():
+        agent.delete_company_supabase(company_id)
+    agent.delete_company_local(company_id)
+
+
+def get_connections_map(company_id: str) -> Dict[str, dict]:
+    if supabase_configured():
+        rows = agent.list_connections_supabase(company_id)
+        if rows is not None:
+            return {r["platform"]: r for r in rows}
+    local = agent.load_connections_local(company_id)
+    return {platform: {**info, "platform": platform} for platform, info in local.items()}
+
+
+def save_connection(company_id: str, platform: str, credentials: dict, auth_type: str = "password"):
+    if supabase_configured():
+        agent.save_connection_supabase(company_id, platform, credentials, auth_type)
+    agent.save_connection_local(company_id, platform, credentials, auth_type)
+
+
+def delete_connection(company_id: str, platform: str):
+    if supabase_configured():
+        agent.delete_connection_supabase(company_id, platform)
+    agent.delete_connection_local(company_id, platform)
+
+
+def get_calendar(company_id: str) -> List[dict]:
+    if supabase_configured():
+        cal = agent.load_calendar_supabase(company_id)
+        if cal is not None:
+            return cal
+    return agent.load_calendar_local(company_id)
+
+
+def save_calendar(company_id: str, posts: List[dict]):
+    if supabase_configured():
+        agent.save_calendar_supabase(company_id, posts)
+    agent.save_calendar_local(company_id, posts)
+
+
+def get_history(company_id: str, platform: str) -> dict:
+    connections = get_connections_map(company_id)
+    conn = connections.get(platform)
+    if conn and platform == "instagram":
+        try:
+            connector = get_connector(platform, conn.get("credentials", {}))
+            return {"posts": connector.fetch_recent_posts()}
+        except Exception as e:
+            print(f"⚠️ Live {platform} history fetch failed: {e}. Falling back to stored history.")
+
+    if supabase_configured():
+        hist = agent.load_history_supabase(company_id, platform)
+        if hist is not None:
+            return hist
+    return agent.load_history_local(company_id, platform)
+
+
+def save_history(company_id: str, platform: str, posts: List[dict]):
+    if supabase_configured():
+        agent.save_history_supabase(company_id, platform, posts)
+    agent.save_history_local(company_id, platform, posts)
+
+
+def get_trend_cache(company_id: str, platform: str) -> Optional[dict]:
+    if supabase_configured():
+        cached = agent.load_trend_cache_supabase(company_id, platform)
+        if cached is not None:
+            return cached
+        return None
+    return agent.load_trend_cache_local(company_id, platform)
+
+
+def save_trend_cache(company_id: str, platform: str, trend_data: dict):
+    if supabase_configured():
+        agent.save_trend_cache_supabase(company_id, platform, trend_data)
+    agent.save_trend_cache_local(company_id, platform, trend_data)
+
+
+def get_gemini_api_key() -> Optional[str]:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if api_key:
+        return api_key
+    if supabase_configured():
+        settings = agent.fetch_settings_supabase()
+        if settings and settings.get("gemini_api_key"):
+            os.environ["GEMINI_API_KEY"] = settings["gemini_api_key"]
+            return settings["gemini_api_key"]
+    return None
+
+
+# ──────────────────────────────────────────────────────────
+# Company CRUD endpoints
+# ──────────────────────────────────────────────────────────
+
+@app.get("/api/companies")
+def api_list_companies():
+    return list_companies()
+
+
+@app.post("/api/companies")
+def api_create_company(req: CompanyRequest):
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail="Company name is required")
+    company = create_company(req.model_dump())
+
+    if req.auto_research and req.website_url.strip():
+        api_key = get_gemini_api_key()
+        if api_key:
+            try:
+                result = research_agent.research_company(
+                    name=company.get("name", req.name),
+                    website_url=req.website_url.strip(),
+                    industry_hint=req.industry,
+                    api_key=api_key,
+                )
+                update_payload = {
+                    "industry": result.get("industry") or company.get("industry", ""),
+                    "business_context": result.get("business_context", ""),
+                    "target_audience": result.get("target_audience", ""),
+                    "brand_voice": result.get("brand_voice", ""),
+                    "content_pillars": result.get("content_pillars") or company.get("content_pillars"),
+                    "cta_text": result.get("cta_suggestion") or company.get("cta_text", ""),
+                    "last_researched_at": result.get("researched_at"),
+                    "research_summary": result.get("summary", ""),
+                    "research_sources": result.get("sources", []),
+                }
+                company = update_company(company["id"], update_payload)
+            except Exception as e:
+                # Auto-research failing shouldn't block company creation — the user can re-run manually.
+                print(f"⚠️ Auto-research failed for new company '{req.name}': {e}")
+
+    return company
+
+
+@app.get("/api/companies/{company_id}")
+def api_get_company(company_id: str):
+    return find_company(company_id)
+
+
+@app.put("/api/companies/{company_id}")
+def api_update_company(company_id: str, req: CompanyRequest):
+    find_company(company_id)
+    return update_company(company_id, req.model_dump())
+
+
+@app.delete("/api/companies/{company_id}")
+def api_delete_company(company_id: str):
+    find_company(company_id)
+    delete_company(company_id)
+    return {"status": "success"}
+
+
+@app.post("/api/companies/{company_id}/research")
+def api_research_company(company_id: str, req: ResearchRequest):
+    company = find_company(company_id)
+    website_url = (req.website_url or company.get("website_url") or "").strip()
+    if not website_url:
+        raise HTTPException(status_code=400, detail="Add a website URL before running research.")
+
+    api_key = get_gemini_api_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Gemini API Key is not set. Please set it in the Settings panel.")
+
     try:
-        profile_data = agent.fetch_instagram_profile_data(username, password)
-        return {"status": "online", "data": profile_data}
+        result = research_agent.research_company(
+            name=company.get("name", ""),
+            website_url=website_url,
+            industry_hint=company.get("industry", ""),
+            socials_hint=req.socials_hint or "",
+            api_key=api_key,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Research failed: {str(e)}")
+
+    update_payload = {
+        "website_url": website_url,
+        "industry": result.get("industry") or company.get("industry", ""),
+        "business_context": result.get("business_context", ""),
+        "target_audience": result.get("target_audience", ""),
+        "brand_voice": result.get("brand_voice", ""),
+        "content_pillars": result.get("content_pillars") or company.get("content_pillars"),
+        "cta_text": result.get("cta_suggestion") or company.get("cta_text", ""),
+        "last_researched_at": result.get("researched_at"),
+        "research_summary": result.get("summary", ""),
+        "research_sources": result.get("sources", []),
+    }
+    return update_company(company_id, update_payload)
+
+
+@app.get("/api/companies/{company_id}/trends")
+def api_get_trends(company_id: str, platform: str = "instagram", refresh: bool = False):
+    company = find_company(company_id)
+    if platform not in PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform '{platform}'")
+
+    cached = get_trend_cache(company_id, platform)
+    if cached and not refresh and research_agent.is_cache_fresh(cached.get("fetched_at")):
+        return {**cached, "from_cache": True}
+
+    api_key = get_gemini_api_key()
+    if not api_key:
+        if cached:
+            # Serve stale cache rather than failing outright if there's nothing else we can do.
+            return {**cached, "from_cache": True, "stale": True}
+        raise HTTPException(status_code=400, detail="Gemini API Key is not set. Please set it in the Settings panel.")
+
+    try:
+        platform_label = PLATFORM_LABELS.get(platform, platform.replace("_", " ").title())
+        trend_data = research_agent.fetch_trends(
+            company=company,
+            platform=platform,
+            platform_label=platform_label,
+            api_key=api_key,
+        )
+        save_trend_cache(company_id, platform, trend_data)
+        return {**trend_data, "from_cache": False}
+    except Exception as e:
+        if cached:
+            return {**cached, "from_cache": True, "stale": True}
+        raise HTTPException(status_code=500, detail=f"Trend fetch failed: {str(e)}")
+
+
+# ──────────────────────────────────────────────────────────
+# Platform connection endpoints
+# ──────────────────────────────────────────────────────────
+
+def connection_public_view(platform: str, conn: Optional[dict]) -> dict:
+    if not conn:
+        return {"platform": platform, "status": "not_connected"}
+    view = {
+        "platform": platform,
+        "status": conn.get("status", "connected"),
+        "auth_type": conn.get("auth_type", "password"),
+        "connected_at": conn.get("connected_at"),
+    }
+    creds = conn.get("credentials") or {}
+    if "username" in creds:
+        view["username"] = creds["username"]
+    elif "ig_user_id" in creds:
+        view["username"] = creds["ig_user_id"]
+    return view
+
+
+@app.get("/api/companies/{company_id}/connections")
+def api_list_connections(company_id: str):
+    find_company(company_id)
+    connections = get_connections_map(company_id)
+    return [connection_public_view(p, connections.get(p)) for p in PLATFORMS]
+
+
+@app.post("/api/companies/{company_id}/connections/{platform}")
+def api_save_connection(company_id: str, platform: str, req: ConnectionRequest):
+    find_company(company_id)
+    if platform not in PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform '{platform}'")
+    if platform != "instagram":
+        raise HTTPException(
+            status_code=400,
+            detail=f"{PLATFORM_LABELS.get(platform, platform)} isn't connectable yet — it needs an official developer app (see project docs)."
+        )
+    has_username_auth = bool(req.credentials.get("username"))
+    has_graph_auth = req.credentials.get("access_token") and req.credentials.get("ig_user_id")
+    if not has_username_auth and not has_graph_auth:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide an Instagram username (with password for full login, or alone for public profile analysis), or access_token + ig_user_id for the official Graph API",
+        )
+    auth_type = req.auth_type
+    if has_username_auth and not has_graph_auth:
+        auth_type = "password" if req.credentials.get("password") else "public"
+    save_connection(company_id, platform, req.credentials, auth_type)
+    return {"status": "success", "message": f"{PLATFORM_LABELS.get(platform, platform)} connected successfully"}
+
+
+@app.delete("/api/companies/{company_id}/connections/{platform}")
+def api_delete_connection(company_id: str, platform: str):
+    find_company(company_id)
+    delete_connection(company_id, platform)
+    return {"status": "success"}
+
+
+@app.get("/api/companies/{company_id}/connections/{platform}/stats")
+def api_connection_stats(company_id: str, platform: str):
+    find_company(company_id)
+    connections = get_connections_map(company_id)
+    conn = connections.get(platform)
+    if not conn:
+        return {"status": "offline", "message": f"{PLATFORM_LABELS.get(platform, platform)} is not connected."}
+    try:
+        connector = get_connector(platform, conn.get("credentials", {}))
+        return {"status": "online", "data": connector.fetch_stats()}
+    except NotImplementedError as e:
+        return {"status": "not_implemented", "message": str(e)}
     except Exception as e:
         return {"status": "error", "message": f"Connection failed: {str(e)}"}
 
-@app.get("/api/history")
-def get_history():
-    try:
-        # 1. Instagram live check first
-        insta_user = os.environ.get("INSTAGRAM_USERNAME")
-        insta_pass = os.environ.get("INSTAGRAM_PASSWORD")
-        if insta_user and insta_pass:
-            try:
-                return agent.fetch_instagram_history(insta_user, insta_pass)
-            except Exception as e:
-                print(f"⚠️ Dynamic Instagram history load failed: {e}. Falling back to database/file.")
 
-        # 2. Try loading from Supabase history
-        supabase_url = os.environ.get("SUPABASE_URL")
-        supabase_key = os.environ.get("SUPABASE_KEY")
-        if supabase_url and supabase_key:
-            history = agent.load_history_supabase()
-            if history is not None:
-                return history
-                
-        # 3. Fallback to local posts_history.json
-        return agent.load_history()
+# ──────────────────────────────────────────────────────────
+# History / Calendar / Generation endpoints
+# ──────────────────────────────────────────────────────────
+
+@app.get("/api/companies/{company_id}/history")
+def api_get_history(company_id: str, platform: str = "instagram"):
+    find_company(company_id)
+    try:
+        return get_history(company_id, platform)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load history: {str(e)}")
 
 
-@app.get("/api/calendar")
-def get_calendar():
-    return load_current_calendar()
+@app.get("/api/companies/{company_id}/calendar")
+def api_get_calendar(company_id: str):
+    find_company(company_id)
+    return get_calendar(company_id)
 
-@app.post("/api/generate")
-def generate_calendar(req: GenerateRequest):
+
+@app.post("/api/companies/{company_id}/calendar/generate-image")
+def api_generate_post_image(company_id: str, req: GenerateImageRequest):
+    find_company(company_id)
+
+    api_key = get_gemini_api_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Gemini API Key is not set. Please set it in the Settings panel.")
+
+    calendar = get_calendar(company_id)
+    if req.post_index < 0 or req.post_index >= len(calendar):
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    post = calendar[req.post_index]
+    try:
+        image_url = content_generator.generate_post_image(
+            prompt=post.get("image_prompt", ""),
+            api_key=api_key,
+            company_id=company_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
+
+    post["image_url"] = image_url
+    save_calendar(company_id, calendar)
+    return {"image_url": image_url}
+
+
+@app.post("/api/companies/{company_id}/generate")
+def api_generate_calendar(company_id: str, req: GenerateRequest):
+    company = find_company(company_id)
+
+    if req.platform not in PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform '{req.platform}'")
+
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise HTTPException(
-            status_code=400, 
-            detail="Gemini API Key is not set. Please set it in the Settings panel."
-        )
-    
+        raise HTTPException(status_code=400, detail="Gemini API Key is not set. Please set it in the Settings panel.")
+
     try:
-        # 1. Load history dynamically from Instagram/Supabase if configured, fallback to local json
-        insta_user = os.environ.get("INSTAGRAM_USERNAME")
-        insta_pass = os.environ.get("INSTAGRAM_PASSWORD")
-        history = None
-        
-        if insta_user and insta_pass:
-            try:
-                print("Retrieving Instagram post history dynamically...")
-                history = agent.fetch_instagram_history(insta_user, insta_pass)
-            except Exception as e:
-                print(f"⚠️ Dynamic Instagram history fetch failed: {e}. Falling back to database/file.")
-                
-        if not history:
-            supabase_url = os.environ.get("SUPABASE_URL")
-            supabase_key = os.environ.get("SUPABASE_KEY")
-            if supabase_url and supabase_key:
-                history = agent.load_history_supabase()
-                
-        if not history:
-            history = agent.load_history()
-
-
-        
-        # 2. Run LLM generation
+        history = get_history(company_id, req.platform)
         num_posts = req.weeks * req.posts_per_week
+
+        trend_context = ""
+        if req.use_trends:
+            cached_trends = get_trend_cache(company_id, req.platform)
+            if cached_trends:
+                trend_context = agent.build_trend_context(cached_trends)
+
         raw_posts = agent.generate_posts(
+            company=company,
+            platform=req.platform,
             history=history,
             num_posts=num_posts,
             api_key=api_key,
             model_name=req.model_name,
-            custom_pillars=req.pillars if req.pillars else None
+            custom_pillars=req.pillars if req.pillars else None,
+            trend_context=trend_context,
         )
-        
-        # 3. Apply schedule
+        for p in raw_posts:
+            p["platform"] = req.platform
+
+        existing_calendar = get_calendar(company_id)
+        existing_for_platform = [p for p in existing_calendar if p.get("platform") == req.platform]
+
         start_date = None
         start_post_number = 1
-        existing_calendar = []
-        
-        if req.append_to_existing:
-            existing_calendar = load_current_calendar()
-            if existing_calendar:
-                # Find the highest post number to increment
-                highest_num = max(p.get("post_number", 0) for p in existing_calendar)
-                start_post_number = highest_num + 1
-                
-                # Find the latest post date in existing calendar
-                latest_date = None
-                for p in existing_calendar:
-                    if p.get("date"):
-                        try:
-                            d = datetime.strptime(p["date"], "%d %b %Y")
-                            if latest_date is None or d > latest_date:
-                                latest_date = d
-                        except Exception:
-                            pass
-                if latest_date:
-                    start_date = latest_date + timedelta(days=1)
+        if req.append_to_existing and existing_for_platform:
+            start_post_number = max(p.get("post_number", 0) for p in existing_for_platform) + 1
+            latest_date = None
+            for p in existing_for_platform:
+                if p.get("date"):
+                    try:
+                        d = datetime.strptime(p["date"], "%d %b %Y")
+                        if latest_date is None or d > latest_date:
+                            latest_date = d
+                    except Exception:
+                        pass
+            if latest_date:
+                start_date = latest_date + timedelta(days=1)
+        elif not req.append_to_existing:
+            existing_calendar = [p for p in existing_calendar if p.get("platform") != req.platform]
 
         scheduled_posts = agent.build_schedule(
-            raw_posts, 
-            start_date=start_date, 
-            start_post_number=start_post_number
+            raw_posts,
+            best_times=company.get("best_times"),
+            start_date=start_date,
+            start_post_number=start_post_number,
         )
-        
-        # 4. Save to temporary current calendar (so user can edit in dashboard before exporting/committing)
+
         full_calendar = existing_calendar + scheduled_posts
-        save_current_calendar(full_calendar)
-        
+        save_calendar(company_id, full_calendar)
         return full_calendar
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
-@app.post("/api/save")
-def save_calendar(req: SaveRequest):
+
+@app.post("/api/companies/{company_id}/generate-from-idea")
+def api_generate_from_idea(company_id: str, req: IdeaGenerateRequest):
+    company = find_company(company_id)
+
+    if req.platform not in PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform '{req.platform}'")
+    idea = req.idea.strip()
+    if not idea:
+        raise HTTPException(status_code=400, detail="Idea cannot be empty")
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Gemini API Key is not set. Please set it in the Settings panel.")
+
+    try:
+        history = get_history(company_id, req.platform)
+
+        trend_context = ""
+        if req.use_trends:
+            cached_trends = get_trend_cache(company_id, req.platform)
+            if cached_trends:
+                trend_context = agent.build_trend_context(cached_trends)
+
+        raw_post = agent.generate_post_from_idea(
+            company=company,
+            platform=req.platform,
+            idea=idea,
+            history=history,
+            api_key=api_key,
+            model_name=req.model_name,
+            trend_context=trend_context,
+        )
+        raw_post["platform"] = req.platform
+
+        existing_calendar = get_calendar(company_id)
+        existing_for_platform = [p for p in existing_calendar if p.get("platform") == req.platform]
+
+        start_post_number = 1
+        start_date = None
+        if existing_for_platform:
+            start_post_number = max(p.get("post_number", 0) for p in existing_for_platform) + 1
+            latest_date = None
+            for p in existing_for_platform:
+                if p.get("date"):
+                    try:
+                        d = datetime.strptime(p["date"], "%d %b %Y")
+                        if latest_date is None or d > latest_date:
+                            latest_date = d
+                    except Exception:
+                        pass
+            if latest_date:
+                start_date = latest_date + timedelta(days=1)
+
+        scheduled = agent.build_schedule(
+            [raw_post],
+            best_times=company.get("best_times"),
+            start_date=start_date,
+            start_post_number=start_post_number,
+        )
+
+        full_calendar = existing_calendar + scheduled
+        save_calendar(company_id, full_calendar)
+        return full_calendar
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+
+
+@app.post("/api/companies/{company_id}/save")
+def api_save_calendar(company_id: str, req: SaveRequest):
+    find_company(company_id)
     try:
         posts_dict = [p.model_dump() for p in req.posts]
-        save_current_calendar(posts_dict)
+        save_calendar(company_id, posts_dict)
         return {"status": "success", "message": "Calendar changes saved successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save changes: {str(e)}")
 
-@app.post("/api/export")
-def export_calendar(req: SaveRequest):
+
+@app.post("/api/companies/{company_id}/export")
+def api_export_calendar(company_id: str, req: SaveRequest):
+    company = find_company(company_id)
     try:
         posts_dict = [p.model_dump() for p in req.posts]
-        
-        # 1. Save current state to current_calendar.json
-        save_current_calendar(posts_dict)
-        
-        # 2. Create the styled Excel workbook
-        agent.create_excel(posts_dict)
-        
-        # 3. Add new posts to history (deduplicated by date + idea_summary)
-        history = None
-        supabase_url = os.environ.get("SUPABASE_URL")
-        supabase_key = os.environ.get("SUPABASE_KEY")
-        if supabase_url and supabase_key:
-            history = agent.load_history_supabase()
-            
-        if not history:
-            history = agent.load_history()
-            
-        history_posts = history.get("posts", [])
-        history_keys = {(p.get("date"), p.get("idea_summary")) for p in history_posts}
-        
-        added_count = 0
-        for post in posts_dict:
-            key = (post["date"], post["idea_summary"])
-            if key not in history_keys:
-                history_posts.append({
-                    "date": post["date"],
-                    "post_type": post["post_type"],
-                    "idea_summary": post["idea_summary"],
-                    "reel_or_static": post["reel_or_static"],
-                })
-                added_count += 1
-        
-        if added_count > 0:
-            history["posts"] = history_posts
-            if supabase_url and supabase_key:
-                agent.save_history_supabase(history_posts)
-            # Save local as backup
-            agent.save_history(history)
+        save_calendar(company_id, posts_dict)
 
-            
-        # 4. Return the Excel file for download
-        if os.path.exists(agent.OUTPUT_FILE):
+        output_path = os.path.join(EXPORT_DIR, f"{company.get('slug', company_id)}_content_calendar.xlsx")
+        agent.create_excel(company, posts_dict, output_path=output_path)
+
+        posts_by_platform: Dict[str, List[dict]] = {}
+        for post in posts_dict:
+            posts_by_platform.setdefault(post.get("platform", "instagram"), []).append(post)
+
+        for platform, platform_posts in posts_by_platform.items():
+            history = get_history(company_id, platform)
+            history_posts = history.get("posts", [])
+            history_keys = {(p.get("date"), p.get("idea_summary")) for p in history_posts}
+
+            added = False
+            for post in platform_posts:
+                key = (post["date"], post["idea_summary"])
+                if key not in history_keys:
+                    history_posts.append({
+                        "date": post["date"],
+                        "post_type": post["post_type"],
+                        "idea_summary": post["idea_summary"],
+                        "reel_or_static": post["reel_or_static"],
+                    })
+                    added = True
+
+            if added:
+                save_history(company_id, platform, history_posts)
+
+        if os.path.exists(output_path):
             return FileResponse(
-                path=agent.OUTPUT_FILE, 
-                filename=agent.OUTPUT_FILE, 
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                path=output_path,
+                filename=os.path.basename(output_path),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
-        else:
-            raise HTTPException(status_code=500, detail="Excel file was not created successfully")
-            
+        raise HTTPException(status_code=500, detail="Excel file was not created successfully")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
+
 # Serve frontend static files
-# Make sure the static folder exists
 os.makedirs("static", exist_ok=True)
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    # Automatically running on port 8000
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
