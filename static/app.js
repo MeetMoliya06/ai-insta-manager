@@ -17,10 +17,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // STATE VARIABLES
     let state = {
-        authenticated: false,
-        setupRequired: false,
-        authMode: "login", // "login" | "setup"
-
         config: { has_api_key: false, default_pillars: [], platforms: [], platform_labels: {}, has_supabase: false },
         companies: [],
         activeCompanyId: localStorage.getItem("activeCompanyId") || null,
@@ -41,14 +37,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // DOM ELEMENTS
     const elements = {
-        authOverlay: document.getElementById("auth-overlay"),
-        authTitle: document.getElementById("auth-title"),
-        authHint: document.getElementById("auth-hint"),
-        authPassword: document.getElementById("auth-password"),
-        authConfirmGroup: document.getElementById("auth-confirm-group"),
-        authPasswordConfirm: document.getElementById("auth-password-confirm"),
-        authError: document.getElementById("auth-error"),
-        authSubmitBtn: document.getElementById("auth-submit-btn"),
         appContainer: document.getElementById("app-container"),
 
         companySelect: document.getElementById("company-select"),
@@ -184,105 +172,8 @@ document.addEventListener("DOMContentLoaded", () => {
         toastText: document.getElementById("toast-text"),
     };
 
-    // ══════════════════════════════════════════════════════
-    // AUTH
-    // ══════════════════════════════════════════════════════
-
     async function apiFetch(url, options = {}) {
-        const res = await fetch(url, options);
-        if (res.status === 401) {
-            showAuthOverlay("login", "Your session expired. Please log in again.");
-            throw new Error("Not authenticated");
-        }
-        return res;
-    }
-
-    function showAuthOverlay(mode, hint) {
-        state.authMode = mode;
-        elements.appContainer.classList.add("hidden");
-        elements.authOverlay.classList.remove("hidden");
-        elements.authError.classList.add("hidden");
-        elements.authPassword.value = "";
-        elements.authPasswordConfirm.value = "";
-
-        if (mode === "setup") {
-            elements.authTitle.textContent = "Create Dashboard Password";
-            elements.authHint.textContent = hint || "First time here — set a password to protect this dashboard.";
-            elements.authConfirmGroup.classList.remove("hidden");
-            elements.authSubmitBtn.textContent = "Create Password & Continue";
-        } else {
-            elements.authTitle.textContent = "Dashboard Login";
-            elements.authHint.textContent = hint || "Enter the dashboard password to continue.";
-            elements.authConfirmGroup.classList.add("hidden");
-            elements.authSubmitBtn.textContent = "Log In";
-        }
-        elements.authPassword.focus();
-    }
-
-    function hideAuthOverlay() {
-        elements.authOverlay.classList.add("hidden");
-        elements.appContainer.classList.remove("hidden");
-    }
-
-    async function checkAuthStatus() {
-        const res = await fetch("/api/auth-status");
-        const data = await res.json();
-        state.setupRequired = data.setup_required;
-        state.authenticated = data.authenticated;
-
-        if (data.setup_required) {
-            showAuthOverlay("setup");
-        } else if (!data.authenticated) {
-            showAuthOverlay("login");
-        } else {
-            hideAuthOverlay();
-            init();
-        }
-    }
-
-    async function submitAuth() {
-        const password = elements.authPassword.value;
-        if (!password || password.length < 6) {
-            showAuthError("Password must be at least 6 characters.");
-            return;
-        }
-
-        if (state.authMode === "setup") {
-            const confirm = elements.authPasswordConfirm.value;
-            if (password !== confirm) {
-                showAuthError("Passwords do not match.");
-                return;
-            }
-        }
-
-        elements.authSubmitBtn.disabled = true;
-        try {
-            const endpoint = state.authMode === "setup" ? "/api/setup-password" : "/api/login";
-            const res = await fetch(endpoint, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ password }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.detail || "Authentication failed");
-
-            hideAuthOverlay();
-            init();
-        } catch (err) {
-            showAuthError(err.message);
-        } finally {
-            elements.authSubmitBtn.disabled = false;
-        }
-    }
-
-    function showAuthError(message) {
-        elements.authError.textContent = message;
-        elements.authError.classList.remove("hidden");
-    }
-
-    async function logout() {
-        await fetch("/api/logout", { method: "POST" });
-        showAuthOverlay("login");
+        return fetch(url, options);
     }
 
     // ══════════════════════════════════════════════════════
@@ -1557,12 +1448,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // EVENT LISTENERS
     // ══════════════════════════════════════════════════════
 
-    function setupAuthEventListeners() {
-        elements.authSubmitBtn.addEventListener("click", submitAuth);
-        elements.authPassword.addEventListener("keydown", (e) => { if (e.key === "Enter") submitAuth(); });
-        elements.authPasswordConfirm.addEventListener("keydown", (e) => { if (e.key === "Enter") submitAuth(); });
-    }
-
     function setupEventListeners() {
         elements.companySelect.addEventListener("change", async () => {
             state.activeCompanyId = elements.companySelect.value;
@@ -1681,6 +1566,5 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // START
-    setupAuthEventListeners();
-    checkAuthStatus();
+    init();
 });

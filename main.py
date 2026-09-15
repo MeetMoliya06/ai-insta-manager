@@ -1,7 +1,4 @@
-import hashlib
-import hmac
 import os
-import secrets
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from contextlib import asynccontextmanager
@@ -11,7 +8,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from dotenv import load_dotenv, set_key
-from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 import social_media_agent as agent
 import research_agent
@@ -21,69 +17,7 @@ from platforms import get_connector, PLATFORMS, PLATFORM_LABELS
 load_dotenv()
 
 ENV_PATH = ".env"
-SESSION_COOKIE = "session"
-SESSION_MAX_AGE = 60 * 60 * 24 * 14  # 14 days
 EXPORT_DIR = "exports"
-
-# ──────────────────────────────────────────────────────────
-# Bootstrap a stable secret key for signing session cookies
-# ──────────────────────────────────────────────────────────
-_secret_key = os.environ.get("DASHBOARD_SECRET_KEY")
-if not _secret_key:
-    _secret_key = secrets.token_hex(32)
-    set_key(ENV_PATH, "DASHBOARD_SECRET_KEY", _secret_key)
-    os.environ["DASHBOARD_SECRET_KEY"] = _secret_key
-
-_serializer = URLSafeTimedSerializer(_secret_key)
-
-
-def hash_password(password: str) -> str:
-    salt = secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 200_000).hex()
-    return f"{salt}${digest}"
-
-
-def verify_password(password: str, stored: str) -> bool:
-    try:
-        salt, digest = stored.split("$", 1)
-        candidate = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 200_000).hex()
-        return hmac.compare_digest(candidate, digest)
-    except Exception:
-        return False
-
-
-def get_password_hash() -> Optional[str]:
-    supabase_url = os.environ.get("SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_KEY")
-    if supabase_url and supabase_key:
-        settings = agent.fetch_settings_supabase()
-        if settings and settings.get("dashboard_password_hash"):
-            return settings["dashboard_password_hash"]
-    return os.environ.get("DASHBOARD_PASSWORD_HASH")
-
-
-def set_password_hash(password_hash: str):
-    set_key(ENV_PATH, "DASHBOARD_PASSWORD_HASH", password_hash)
-    os.environ["DASHBOARD_PASSWORD_HASH"] = password_hash
-    agent.save_settings_supabase(dashboard_password_hash=password_hash)
-
-
-def make_session_cookie() -> str:
-    return _serializer.dumps({"auth": True})
-
-
-def is_authenticated(request: Request) -> bool:
-    cookie = request.cookies.get(SESSION_COOKIE)
-    if not cookie:
-        return False
-    try:
-        data = _serializer.loads(cookie, max_age=SESSION_MAX_AGE)
-        return bool(data.get("auth"))
-    except (BadSignature, SignatureExpired):
-        return False
-
-
-AUTH_EXEMPT_PATHS = {"/api/auth-status", "/api/login", "/api/setup-password"}
 
 
 @asynccontextmanager
@@ -97,11 +31,7 @@ app = FastAPI(title="AI Social Media Manager Dashboard", lifespan=lifespan)
 
 
 @app.middleware("http")
-async def auth_and_no_cache(request: Request, call_next):
-    if request.url.path.startswith("/api/") and request.url.path not in AUTH_EXEMPT_PATHS:
-        if not is_authenticated(request):
-            return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
-
+async def no_cache(request: Request, call_next):
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
@@ -116,10 +46,6 @@ def supabase_configured() -> bool:
 # ──────────────────────────────────────────────────────────
 # Pydantic models
 # ──────────────────────────────────────────────────────────
-
-class LoginRequest(BaseModel):
-    password: str
-
 
 class GeminiConfigRequest(BaseModel):
     api_key: str
@@ -200,47 +126,6 @@ class GenerateImageRequest(BaseModel):
 
 
 # ──────────────────────────────────────────────────────────
-# Auth endpoints
-# ──────────────────────────────────────────────────────────
-
-@app.get("/api/auth-status")
-def auth_status(request: Request):
-    return {
-        "setup_required": get_password_hash() is None,
-        "authenticated": is_authenticated(request),
-    }
-
-
-@app.post("/api/setup-password")
-def setup_password(data: LoginRequest, response: Response):
-    if get_password_hash() is not None:
-        raise HTTPException(status_code=403, detail="Dashboard password is already configured.")
-    password = data.password.strip()
-    if len(password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
-    set_password_hash(hash_password(password))
-    response.set_cookie(SESSION_COOKIE, make_session_cookie(), max_age=SESSION_MAX_AGE, httponly=True, samesite="lax")
-    return {"status": "success"}
-
-
-@app.post("/api/login")
-def login(data: LoginRequest, response: Response):
-    stored_hash = get_password_hash()
-    if not stored_hash:
-        raise HTTPException(status_code=400, detail="No password configured yet. Please complete setup first.")
-    if not verify_password(data.password, stored_hash):
-        raise HTTPException(status_code=401, detail="Incorrect password.")
-    response.set_cookie(SESSION_COOKIE, make_session_cookie(), max_age=SESSION_MAX_AGE, httponly=True, samesite="lax")
-    return {"status": "success"}
-
-
-@app.post("/api/logout")
-def logout(response: Response):
-    response.delete_cookie(SESSION_COOKIE)
-    return {"status": "success"}
-
-
-# ──────────────────────────────────────────────────────────
 # Operator-level settings (Gemini key, Supabase connection)
 # ──────────────────────────────────────────────────────────
 
@@ -294,8 +179,7 @@ def update_supabase_config(data: SupabaseConfigRequest):
 
     try:
         gemini_api_key = os.environ.get("GEMINI_API_KEY")
-        password_hash = os.environ.get("DASHBOARD_PASSWORD_HASH")
-        agent.save_settings_supabase(gemini_key=gemini_api_key, dashboard_password_hash=password_hash)
+        agent.save_settings_supabase(gemini_key=gemini_api_key)
     except Exception as e:
         print(f"⚠️ Settings sync failed: {e}")
 

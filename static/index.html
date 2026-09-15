@@ -19,31 +19,7 @@
     <div class="glow-orb orb-teal"></div>
     <div class="glow-orb orb-amber"></div>
 
-    <!-- AUTH OVERLAY (login / first-run setup) -->
-    <div class="modal-backdrop" id="auth-overlay">
-        <div class="modal-content glass-card" style="max-width: 380px;">
-            <div class="modal-header">
-                <h3><i class="fa-solid fa-lock"></i> <span id="auth-title">Dashboard Login</span></h3>
-            </div>
-            <div class="modal-body">
-                <p class="field-hint" id="auth-hint">Enter the dashboard password to continue.</p>
-                <div class="form-group">
-                    <label for="auth-password">Password</label>
-                    <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password">
-                </div>
-                <div class="form-group hidden" id="auth-confirm-group">
-                    <label for="auth-password-confirm">Confirm Password</label>
-                    <input type="password" id="auth-password-confirm" placeholder="••••••••" autocomplete="new-password">
-                </div>
-                <p class="field-hint error-text hidden" id="auth-error"></p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary" id="auth-submit-btn" style="width: 100%;">Log In</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="app-container hidden" id="app-container">
+    <div class="app-container" id="app-container">
         <!-- HEADER -->
         <header class="app-header">
             <div class="header-logo-container">
